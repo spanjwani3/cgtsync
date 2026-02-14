@@ -1,16 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { EVIDENCE_BUCKET } from "@/lib/config";
 
-const BUCKET = "evidence";
 const SIGNED_URL_TTL = 300; // 5 minutes
 
 /**
  * Get a Supabase admin client (service role) for storage operations.
  * This bypasses RLS — use only in server-side gateway routes.
+ * Throws a descriptive error if env vars are missing.
  */
 function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
+  }
+  if (!serviceKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  }
+
   return createClient(url, serviceKey);
 }
 
@@ -22,7 +31,70 @@ export function computeSha256(buffer: Buffer): string {
 }
 
 /**
+ * Verify that the evidence bucket exists. Returns { exists, error? }.
+ */
+export async function checkBucketExists(): Promise<{
+  exists: boolean;
+  error?: string;
+}> {
+  try {
+    const admin = getAdminClient();
+    const { data, error } = await admin.storage.getBucket(EVIDENCE_BUCKET);
+    if (error || !data) {
+      return {
+        exists: false,
+        error: `Bucket "${EVIDENCE_BUCKET}" not found. Create it in Supabase Storage.`,
+      };
+    }
+    return { exists: true };
+  } catch (e) {
+    return {
+      exists: false,
+      error: e instanceof Error ? e.message : "Unknown error checking bucket",
+    };
+  }
+}
+
+/**
+ * Create the evidence bucket if it doesn't exist (idempotent).
+ * Bucket is private (no public access).
+ */
+export async function ensureBucketExists(): Promise<{
+  created: boolean;
+  error?: string;
+}> {
+  try {
+    const admin = getAdminClient();
+    const { data: existing } = await admin.storage.getBucket(EVIDENCE_BUCKET);
+    if (existing) {
+      return { created: false }; // already exists
+    }
+
+    const { error } = await admin.storage.createBucket(EVIDENCE_BUCKET, {
+      public: false,
+      fileSizeLimit: 50 * 1024 * 1024, // 50 MB
+    });
+
+    if (error) {
+      // "already exists" race is not an error
+      if (error.message?.includes("already exists")) {
+        return { created: false };
+      }
+      return { created: false, error: error.message };
+    }
+
+    return { created: true };
+  } catch (e) {
+    return {
+      created: false,
+      error: e instanceof Error ? e.message : "Unknown error creating bucket",
+    };
+  }
+}
+
+/**
  * Upload a file to Supabase Storage (private bucket) and return metadata.
+ * Validates bucket exists before upload.
  */
 export async function uploadEvidence(
   file: Buffer,
@@ -32,17 +104,28 @@ export async function uploadEvidence(
   const admin = getAdminClient();
   const sha256Hash = computeSha256(file);
 
-  const { error } = await admin.storage.from(BUCKET).upload(path, file, {
-    contentType,
-    upsert: false,
-  });
+  // Verify bucket exists before attempting upload
+  const { exists, error: bucketError } = await checkBucketExists();
+  if (!exists) {
+    throw new Error(
+      bucketError ??
+        `Bucket "${EVIDENCE_BUCKET}" not found. Create it in Supabase Storage.`
+    );
+  }
+
+  const { error } = await admin.storage
+    .from(EVIDENCE_BUCKET)
+    .upload(path, file, {
+      contentType,
+      upsert: false,
+    });
 
   if (error) {
     throw new Error(`Storage upload failed: ${error.message}`);
   }
 
   return {
-    storagePath: `${BUCKET}/${path}`,
+    storagePath: `${EVIDENCE_BUCKET}/${path}`,
     sha256Hash,
     fileSize: file.length,
   };
@@ -57,11 +140,10 @@ export async function getSignedUrl(
   ttl: number = SIGNED_URL_TTL
 ): Promise<string> {
   const admin = getAdminClient();
-  // storagePath is "evidence/some/path.pdf" — strip bucket prefix
-  const path = storagePath.replace(`${BUCKET}/`, "");
+  const path = storagePath.replace(`${EVIDENCE_BUCKET}/`, "");
 
   const { data, error } = await admin.storage
-    .from(BUCKET)
+    .from(EVIDENCE_BUCKET)
     .createSignedUrl(path, ttl);
 
   if (error || !data?.signedUrl) {
@@ -77,9 +159,11 @@ export async function getSignedUrl(
  */
 export async function deleteStorageFile(storagePath: string): Promise<void> {
   const admin = getAdminClient();
-  const path = storagePath.replace(`${BUCKET}/`, "");
+  const path = storagePath.replace(`${EVIDENCE_BUCKET}/`, "");
 
-  const { error } = await admin.storage.from(BUCKET).remove([path]);
+  const { error } = await admin.storage
+    .from(EVIDENCE_BUCKET)
+    .remove([path]);
 
   if (error) {
     throw new Error(`Storage delete failed: ${error.message}`);

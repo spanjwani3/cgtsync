@@ -41,9 +41,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     });
   }
 
+  const isAdmin = membership?.role === "ADMIN";
+
   const navigation = [
     { label: "Programs", href: "/programs" },
     { label: "New Program", href: "/onboarding" },
+    ...(isAdmin ? [{ label: "System Health", href: "/admin/health" }] : []),
   ];
 
   return (
