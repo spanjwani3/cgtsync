@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { OrgRole } from "@/generated/prisma";
+import { OrgRole } from "@/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 export interface AuthContext {

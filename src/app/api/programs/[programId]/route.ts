@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { OrgRole } from "@/generated/prisma";
+import { OrgRole } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 
@@ -89,7 +89,7 @@ export async function PATCH(
       action: "PROGRAM_UPDATED",
       entityType: "Program",
       entityId: program.id,
-      metadata: { updatedFields: Object.keys(data) },
+      metadata: { updatedFields: Object.keys(data).join(",") },
       ipAddress: getClientIp(req.headers),
     });
 

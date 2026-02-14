@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { EventAction } from "@/generated/prisma";
+import { EventAction, Prisma } from "@/generated/prisma/client";
 
 interface LogEventParams {
   programId?: string;
@@ -7,7 +7,7 @@ interface LogEventParams {
   action: EventAction;
   entityType?: string;
   entityId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, string | number | boolean | null>;
   ipAddress?: string;
 }
 
@@ -23,7 +23,7 @@ export async function logEvent(params: LogEventParams) {
       action: params.action,
       entityType: params.entityType ?? null,
       entityId: params.entityId ?? null,
-      metadata: params.metadata ?? {},
+      metadata: (params.metadata ?? {}) as Prisma.InputJsonValue,
       ipAddress: params.ipAddress ?? null,
     },
   });

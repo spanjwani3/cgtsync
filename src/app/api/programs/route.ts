@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { OrgRole } from "@/generated/prisma";
+import { OrgRole } from "@/generated/prisma/client";
 import { requireAuth, requireOrgAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 
@@ -35,21 +35,35 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAuth();
     const body = await req.json();
-    const { orgId, name, cdmoName, molecule, modality, description, currency, changeThreshold } = body;
+    const { name, cdmoName, molecule, modality, description, currency, changeThreshold } = body;
 
-    if (!orgId || !name || !cdmoName) {
+    if (!name || !cdmoName) {
       return NextResponse.json(
-        { error: "orgId, name, and cdmoName are required" },
+        { error: "name and cdmoName are required" },
         { status: 400 }
       );
     }
 
-    const auth = await requireOrgAccess(orgId, OrgRole.OPERATOR);
+    // Resolve orgId: use provided or fall back to user's first org
+    let resolvedOrgId = body.orgId;
+    if (!resolvedOrgId) {
+      const membership = await prisma.orgMember.findFirst({
+        where: { userId: auth.userId },
+        select: { orgId: true },
+      });
+      if (!membership) {
+        return NextResponse.json({ error: "No organization found" }, { status: 404 });
+      }
+      resolvedOrgId = membership.orgId;
+    }
+
+    await requireOrgAccess(resolvedOrgId, OrgRole.OPERATOR);
 
     const program = await prisma.program.create({
       data: {
-        orgId,
+        orgId: resolvedOrgId,
         name,
         cdmoName,
         molecule: molecule ?? null,

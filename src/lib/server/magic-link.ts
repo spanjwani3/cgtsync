@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { MagicLinkScope, EventAction } from "@/generated/prisma";
+import { MagicLinkScope, EventAction } from "@/generated/prisma/client";
 import { logEvent } from "./event-log";
 
 interface CreateMagicLinkParams {
