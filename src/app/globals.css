@@ -1,26 +1,282 @@
 @import "tailwindcss";
 
+/* ─── CGT-Sync Design System ─────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surface & Background */
+  --background: #fafafa;
+  --foreground: #18181b;
+  --surface: #ffffff;
+  --surface-secondary: #f4f4f5;
+  --surface-sidebar: #f8f8fa;
+  --surface-hover: #f0f0f2;
+
+  /* Borders */
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  /* Text */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
+  --text-muted: #a1a1aa;
+
+  /* Brand / Primary */
+  --primary: #18181b;
+  --primary-hover: #27272a;
+  --primary-foreground: #ffffff;
+
+  /* Status Badge Colors — DRAFT */
+  --badge-draft-bg: #f4f4f5;
+  --badge-draft-text: #52525b;
+  --badge-draft-border: #d4d4d8;
+
+  /* Status Badge Colors — RELEASED */
+  --badge-released-bg: #eff6ff;
+  --badge-released-text: #1d4ed8;
+  --badge-released-border: #bfdbfe;
+
+  /* Status Badge Colors — CONFIRMED / APPROVED / ACTIVE */
+  --badge-confirmed-bg: #f0fdf4;
+  --badge-confirmed-text: #15803d;
+  --badge-confirmed-border: #bbf7d0;
+
+  /* Status Badge Colors — LOCKED */
+  --badge-locked-bg: #faf5ff;
+  --badge-locked-text: #7e22ce;
+  --badge-locked-border: #e9d5ff;
+
+  /* Status Badge Colors — SUPERSEDED / ARCHIVED */
+  --badge-superseded-bg: #f5f5f4;
+  --badge-superseded-text: #78716c;
+  --badge-superseded-border: #d6d3d1;
+
+  /* Status Badge Colors — UPLOADED / MAPPED */
+  --badge-uploaded-bg: #fefce8;
+  --badge-uploaded-text: #a16207;
+  --badge-uploaded-border: #fde68a;
+
+  /* Status Badge Colors — DISPUTED */
+  --badge-disputed-bg: #fff7ed;
+  --badge-disputed-text: #c2410c;
+  --badge-disputed-border: #fed7aa;
+
+  /* Flag Colors */
+  --flag-red-bg: #fef2f2;
+  --flag-red-text: #b91c1c;
+  --flag-red-border: #fecaca;
+
+  --flag-amber-bg: #fffbeb;
+  --flag-amber-text: #b45309;
+  --flag-amber-border: #fde68a;
+
+  /* Severity */
+  --severity-low: #6b7280;
+  --severity-medium: #d97706;
+  --severity-high: #dc2626;
+  --severity-critical: #7c3aed;
+
+  /* Accent */
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-muted: var(--text-muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-blue-hover: var(--accent-blue-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ─── Base ───────────────────────────────────────────────────── */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Table Styles ───────────────────────────────────────────── */
+
+.cgt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.cgt-table thead {
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.cgt-table thead th {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  background: var(--surface-secondary);
+  white-space: nowrap;
+}
+
+.cgt-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.1s ease;
+}
+
+.cgt-table tbody tr:hover {
+  background-color: var(--surface-secondary);
+}
+
+.cgt-table tbody tr:nth-child(even) {
+  background-color: rgba(244, 244, 245, 0.5);
+}
+
+.cgt-table tbody tr:nth-child(even):hover {
+  background-color: var(--surface-secondary);
+}
+
+.cgt-table tbody td {
+  padding: 0.625rem 0.75rem;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.cgt-table tbody td.numeric {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* ─── Status Badges ──────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  border-width: 1px;
+  border-style: solid;
+  white-space: nowrap;
+  line-height: 1.25rem;
+}
+
+.badge-draft {
+  background-color: var(--badge-draft-bg);
+  color: var(--badge-draft-text);
+  border-color: var(--badge-draft-border);
+}
+
+.badge-released {
+  background-color: var(--badge-released-bg);
+  color: var(--badge-released-text);
+  border-color: var(--badge-released-border);
+}
+
+.badge-confirmed,
+.badge-approved,
+.badge-active {
+  background-color: var(--badge-confirmed-bg);
+  color: var(--badge-confirmed-text);
+  border-color: var(--badge-confirmed-border);
+}
+
+.badge-locked {
+  background-color: var(--badge-locked-bg);
+  color: var(--badge-locked-text);
+  border-color: var(--badge-locked-border);
+}
+
+.badge-superseded,
+.badge-archived {
+  background-color: var(--badge-superseded-bg);
+  color: var(--badge-superseded-text);
+  border-color: var(--badge-superseded-border);
+}
+
+.badge-uploaded,
+.badge-mapped,
+.badge-logged {
+  background-color: var(--badge-uploaded-bg);
+  color: var(--badge-uploaded-text);
+  border-color: var(--badge-uploaded-border);
+}
+
+.badge-flagged,
+.badge-disputed {
+  background-color: var(--badge-disputed-bg);
+  color: var(--badge-disputed-text);
+  border-color: var(--badge-disputed-border);
+}
+
+/* ─── Flag Indicators ────────────────────────────────────────── */
+
+.flag-red {
+  background-color: var(--flag-red-bg);
+  color: var(--flag-red-text);
+  border-color: var(--flag-red-border);
+}
+
+.flag-amber {
+  background-color: var(--flag-amber-bg);
+  color: var(--flag-amber-text);
+  border-color: var(--flag-amber-border);
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+
+/* ─── Focus Styles ───────────────────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* ─── Transitions ────────────────────────────────────────────── */
+
+.transition-default {
+  transition-property: color, background-color, border-color, opacity;
+  transition-timing-function: ease;
+  transition-duration: 150ms;
 }

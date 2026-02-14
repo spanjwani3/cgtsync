@@ -4,16 +4,408 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
+
+// ─── Enums ──────────────────────────────────────────────────
+
+enum OrgRole {
+  ADMIN
+  OPERATOR
+  READ_ONLY
+}
+
+enum ProgramStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BaselineStatus {
+  DRAFT
+  RELEASED
+  CONFIRMED
+  LOCKED
+  SUPERSEDED
+}
+
+enum ClauseType {
+  PRICING
+  TIMELINE
+  SCOPE
+  QUALITY
+  REGULATORY
+  PAYMENT_TERMS
+  IP
+  OTHER
+}
+
+enum ChangeStatus {
+  DRAFT
+  RELEASED
+  CONFIRMED
+  LOGGED
+}
+
+enum ChangeSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum InvoiceStatus {
+  UPLOADED
+  MAPPED
+  FLAGGED
+  APPROVED
+  DISPUTED
+}
+
+enum LineItemFlag {
+  NONE
+  RATE_MISMATCH
+  SCOPE_CREEP
+  UNAPPROVED_CHANGE
+  DUPLICATE
+  MISSING_BASELINE
+  OTHER
+}
+
+enum EvidenceType {
+  INVOICE
+  SOW_MSA
+  EMAIL_APPROVAL
+  TRANSCRIPT
+  CHANGE_ORDER
+  DISPUTE_PACKET
+  EXPORT_PACK
+  OTHER
+}
+
+enum EventAction {
+  // Auth
+  USER_LOGIN
+  USER_LOGOUT
+  // Program
+  PROGRAM_CREATED
+  PROGRAM_UPDATED
+  PROGRAM_ARCHIVED
+  // Baseline
+  BASELINE_CREATED
+  BASELINE_RELEASED
+  BASELINE_CONFIRMED
+  BASELINE_LOCKED
+  BASELINE_SUPERSEDED
+  CLAUSE_CREATED
+  CLAUSE_UPDATED
+  // Change
+  CHANGE_DRAFTED
+  CHANGE_RELEASED
+  CHANGE_CONFIRMED
+  CHANGE_AUTO_LOGGED
+  // Invoice
+  INVOICE_UPLOADED
+  INVOICE_MAPPED
+  INVOICE_FLAGGED
+  INVOICE_APPROVED
+  INVOICE_DISPUTED
+  LINE_ITEM_FLAGGED
+  // Evidence
+  EVIDENCE_UPLOADED
+  EVIDENCE_FINALIZED
+  // Magic Link
+  MAGIC_LINK_CREATED
+  MAGIC_LINK_VIEWED
+  MAGIC_LINK_CONFIRMED
+  MAGIC_LINK_EXPIRED
+  // Export
+  EXPORT_GENERATED
+  // Retention
+  RETENTION_DELETE_EXECUTED
+}
+
+enum MagicLinkScope {
+  BASELINE_CONFIRM
+  CHANGE_CONFIRM
+}
+
+enum ExportType {
+  BASELINE_PACK
+  CHANGE_LEDGER_PACK
+  INVOICE_REVIEW_PACK
+  DISPUTE_PACKET
+  WEEKLY_GOVERNANCE_PACK
+}
+
+// ─── Core Models ────────────────────────────────────────────
 
 /// Maps to Supabase auth.users — stores app-level profile data.
 model User {
-  id        String   @id @db.Uuid          // matches Supabase auth.users.id
+  id        String   @id @db.Uuid
   email     String   @unique
+  fullName  String?  @map("full_name")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  memberships  OrgMember[]
+  eventLogs    EventLog[]
+  magicLinks   MagicLink[]   @relation("CreatedByUser")
+
   @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members   OrgMember[]
+  programs  Program[]
+
+  @@map("organizations")
+}
+
+model OrgMember {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      OrgRole  @default(OPERATOR)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@map("org_members")
+}
+
+model Program {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String        @map("org_id") @db.Uuid
+  name            String
+  cdmoName        String        @map("cdmo_name")
+  molecule        String?
+  modality        String?
+  description     String?
+  status          ProgramStatus @default(DRAFT)
+  currency        String        @default("USD")
+  retentionDays   Int?          @map("retention_days")
+  activatedAt     DateTime?     @map("activated_at")
+  changeThreshold Decimal?      @map("change_threshold") @db.Decimal(14, 2)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  baselines  Baseline[]
+  changes    Change[]
+  invoices   Invoice[]
+  evidences  Evidence[]
+  eventLogs  EventLog[]
+  exports    Export[]
+
+  @@map("programs")
+}
+
+// ─── Baseline (Assumption Locker) ───────────────────────────
+
+model Baseline {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId    String         @map("program_id") @db.Uuid
+  version      Int            @default(1)
+  title        String
+  status       BaselineStatus @default(DRAFT)
+  sourceFileId String?        @map("source_file_id") @db.Uuid
+  releasedAt   DateTime?      @map("released_at")
+  confirmedAt  DateTime?      @map("confirmed_at")
+  lockedAt     DateTime?      @map("locked_at")
+  supersededAt DateTime?      @map("superseded_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  program    Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  sourceFile Evidence?        @relation("BaselineSource", fields: [sourceFileId], references: [id])
+  clauses    BaselineClause[]
+  changes    Change[]
+
+  @@unique([programId, version])
+  @@map("baselines")
+}
+
+model BaselineClause {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  baselineId  String     @map("baseline_id") @db.Uuid
+  clauseRef   String?    @map("clause_ref")
+  type        ClauseType
+  title       String
+  description String?
+  value       Decimal?   @db.Decimal(14, 2)
+  unit        String?
+  sortOrder   Int        @default(0) @map("sort_order")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  baseline   Baseline    @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  lineItems  InvoiceLineItem[] @relation("ClauseLineItems")
+
+  @@map("baseline_clauses")
+}
+
+// ─── Change Ledger ──────────────────────────────────────────
+
+model Change {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId       String         @map("program_id") @db.Uuid
+  baselineId      String?        @map("baseline_id") @db.Uuid
+  sequenceNum     Int            @map("sequence_num")
+  title           String
+  description     String?
+  severity        ChangeSeverity @default(MEDIUM)
+  status          ChangeStatus   @default(DRAFT)
+  estimatedImpact Decimal?       @map("estimated_impact") @db.Decimal(14, 2)
+  evidenceFileId  String?        @map("evidence_file_id") @db.Uuid
+  releasedAt      DateTime?      @map("released_at")
+  confirmedAt     DateTime?      @map("confirmed_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  program      Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  baseline     Baseline? @relation(fields: [baselineId], references: [id])
+  evidenceFile Evidence? @relation("ChangeEvidence", fields: [evidenceFileId], references: [id])
+  lineItems    InvoiceLineItem[] @relation("ChangeLineItems")
+
+  @@unique([programId, sequenceNum])
+  @@map("changes")
+}
+
+// ─── Invoice Reconciliation ─────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId      String        @map("program_id") @db.Uuid
+  invoiceNumber  String?       @map("invoice_number")
+  vendorName     String?       @map("vendor_name")
+  invoiceDate    DateTime?     @map("invoice_date")
+  totalAmount    Decimal?      @map("total_amount") @db.Decimal(14, 2)
+  currency       String        @default("USD")
+  status         InvoiceStatus @default(UPLOADED)
+  evidenceFileId String?       @map("evidence_file_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  program      Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  evidenceFile Evidence?        @relation("InvoiceEvidence", fields: [evidenceFileId], references: [id])
+  lineItems    InvoiceLineItem[]
+
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId   String       @map("invoice_id") @db.Uuid
+  description String
+  quantity    Decimal?     @db.Decimal(14, 4)
+  unitPrice   Decimal?     @map("unit_price") @db.Decimal(14, 2)
+  amount      Decimal      @db.Decimal(14, 2)
+  clauseId    String?      @map("clause_id") @db.Uuid
+  changeId    String?      @map("change_id") @db.Uuid
+  flag        LineItemFlag @default(NONE)
+  flagNote    String?      @map("flag_note")
+  sortOrder   Int          @default(0) @map("sort_order")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  invoice Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  clause  BaselineClause? @relation("ClauseLineItems", fields: [clauseId], references: [id])
+  change  Change?         @relation("ChangeLineItems", fields: [changeId], references: [id])
+
+  @@map("invoice_line_items")
+}
+
+// ─── Evidence & Storage ─────────────────────────────────────
+
+model Evidence {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId   String       @map("program_id") @db.Uuid
+  type        EvidenceType
+  fileName    String       @map("file_name")
+  fileSize    Int          @map("file_size")
+  mimeType    String       @map("mime_type")
+  storagePath String       @map("storage_path")
+  sha256Hash  String       @map("sha256_hash")
+  metadata    Json?        @default("{}")
+  finalized   Boolean      @default(false)
+  finalizedAt DateTime?    @map("finalized_at")
+  retainUntil DateTime?    @map("retain_until")
+  deletedAt   DateTime?    @map("deleted_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  program            Program    @relation(fields: [programId], references: [id], onDelete: Cascade)
+  baselinesAsSource  Baseline[] @relation("BaselineSource")
+  changesAsEvidence  Change[]   @relation("ChangeEvidence")
+  invoicesAsEvidence Invoice[]  @relation("InvoiceEvidence")
+
+  @@map("evidences")
+}
+
+// ─── Append-Only Event Log ──────────────────────────────────
+
+model EventLog {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId  String?     @map("program_id") @db.Uuid
+  userId     String?     @map("user_id") @db.Uuid
+  action     EventAction
+  entityType String?     @map("entity_type")
+  entityId   String?     @map("entity_id") @db.Uuid
+  metadata   Json?       @default("{}")
+  ipAddress  String?     @map("ip_address")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  program Program? @relation(fields: [programId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+
+  @@index([programId, createdAt])
+  @@index([entityType, entityId])
+  @@map("event_logs")
+}
+
+// ─── Magic Links ────────────────────────────────────────────
+
+model MagicLink {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token       String         @unique @default(dbgenerated("gen_random_uuid()"))
+  scope       MagicLinkScope
+  entityId    String         @map("entity_id") @db.Uuid
+  createdById String         @map("created_by_id") @db.Uuid
+  singleUse   Boolean        @default(false) @map("single_use")
+  expiresAt   DateTime       @map("expires_at")
+  viewedAt    DateTime?      @map("viewed_at")
+  confirmedAt DateTime?      @map("confirmed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  createdBy User @relation("CreatedByUser", fields: [createdById], references: [id])
+
+  @@index([token])
+  @@map("magic_links")
+}
+
+// ─── Exports ────────────────────────────────────────────────
+
+model Export {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId   String     @map("program_id") @db.Uuid
+  type        ExportType
+  fileName    String     @map("file_name")
+  storagePath String     @map("storage_path")
+  sha256Hash  String     @map("sha256_hash")
+  metadata    Json?      @default("{}")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@map("exports")
 }
