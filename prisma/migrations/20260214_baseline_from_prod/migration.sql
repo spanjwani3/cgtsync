@@ -1,3 +1,7 @@
+-- Baseline: snapshot of the 13-table production schema created via `prisma db push`.
+-- This migration is marked as "already applied" on prod so Prisma knows
+-- the schema already exists. On a fresh DB it creates everything from scratch.
+
 -- CreateEnum
 CREATE TYPE "OrgRole" AS ENUM ('ADMIN', 'OPERATOR', 'READ_ONLY');
 
