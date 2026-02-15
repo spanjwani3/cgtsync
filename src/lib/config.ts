@@ -1,11 +1,16 @@
 /**
  * Centralized configuration constants.
- * Bucket names, env var keys, schema introspection, and request helpers.
+ * Bucket names, env var keys, table map re-exports, and request helpers.
  */
 
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
+
+// Re-export build-time generated table map (no runtime fs access needed)
+export {
+  MODEL_TABLE_MAPPINGS,
+  EXPECTED_TABLES,
+  type ModelTableMapping,
+} from "@/generated/table-map";
 
 // ─── Storage ────────────────────────────────────────────────
 
@@ -19,7 +24,7 @@ export const EVIDENCE_BUCKET =
 export const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_SITE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
   "DATABASE_URL",
 ] as const;
@@ -38,57 +43,6 @@ export function getMissingEnv(): string[] {
   return REQUIRED_ENV_KEYS.filter((key) => !process.env[key]);
 }
 
-// ─── Schema Introspection ───────────────────────────────────
-
-interface ModelTableMapping {
-  modelName: string;
-  tableName: string;
-}
-
-let _cachedMappings: ModelTableMapping[] | null = null;
-
-/**
- * Parse prisma/schema.prisma to extract model→table mappings.
- * Uses @@map("table_name") when present; otherwise lowercases + pluralises the model name.
- * Result is cached after first call — never drifts from the schema file.
- */
-export function getModelTableMappings(): ModelTableMapping[] {
-  if (_cachedMappings) return _cachedMappings;
-
-  const schemaPath = path.resolve(process.cwd(), "prisma/schema.prisma");
-  let schemaText: string;
-  try {
-    schemaText = fs.readFileSync(schemaPath, "utf-8");
-  } catch {
-    // Fallback: return empty; the caller will report "unable to read schema"
-    return [];
-  }
-
-  const mappings: ModelTableMapping[] = [];
-  // Match each model block: `model Foo { ... }`
-  const modelRe = /^model\s+(\w+)\s*\{([^}]*)\}/gm;
-  let match: RegExpExecArray | null;
-  while ((match = modelRe.exec(schemaText)) !== null) {
-    const modelName = match[1];
-    const body = match[2];
-    // Look for @@map("table_name") inside the model body
-    const mapMatch = body.match(/@@map\(\s*"([^"]+)"\s*\)/);
-    const tableName = mapMatch ? mapMatch[1] : modelName.toLowerCase() + "s";
-    mappings.push({ modelName, tableName });
-  }
-
-  _cachedMappings = mappings;
-  return mappings;
-}
-
-/**
- * Get the list of expected Postgres table names, derived from prisma/schema.prisma.
- * Never hardcoded — automatically updates when models are added/removed.
- */
-export function getExpectedTables(): string[] {
-  return getModelTableMappings().map((m) => m.tableName);
-}
-
 // ─── Request ID ─────────────────────────────────────────────
 
 /** Generate a unique request ID for correlation. */
@@ -96,7 +50,10 @@ export function generateRequestId(): string {
   return crypto.randomUUID();
 }
 
-/** Build a structured error log object. Never includes stack in the returned JSON. */
+/**
+ * Build a structured error log object for server-side logging.
+ * Stack is included for server-side diagnostics; never returned to client.
+ */
 export function structuredError(opts: {
   requestId: string;
   route: string;

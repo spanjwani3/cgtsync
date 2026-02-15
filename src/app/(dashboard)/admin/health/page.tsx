@@ -21,7 +21,7 @@ interface HealthData {
     evidence_bucket_exists: boolean;
     evidence_bucket_name: string;
     bucket_error: string | null;
-    app_url_present: boolean;
+    site_url_present: boolean;
   };
 }
 
@@ -32,7 +32,9 @@ interface DbCheckData {
   missing: string[];
   extra: string[];
   migrations_table_exists: boolean;
-  recent_migrations: { id: string; migration_name: string; finished_at: string | null }[];
+  recent_migrations: { id: string; migration_name: string; started_at: string | null; finished_at: string | null }[];
+  failed_migrations: number;
+  latest_migration: { name: string; finished_at: string | null } | null;
   fix: string | null;
 }
 
@@ -207,15 +209,28 @@ export default function AdminHealthPage() {
                 </div>
               ))}
             </div>
+            {dbCheck.latest_migration && (
+              <p className="text-xs text-zinc-600 mt-2">
+                <span className="font-medium">Latest:</span>{" "}
+                <span className="font-mono">{dbCheck.latest_migration.name}</span>{" "}
+                <span className="text-zinc-400">({dbCheck.latest_migration.finished_at})</span>
+              </p>
+            )}
+            {dbCheck.failed_migrations > 0 && (
+              <p className="text-xs text-red-600 mt-1">
+                {dbCheck.failed_migrations} migration(s) started but not finished — may need manual intervention.
+              </p>
+            )}
             {dbCheck.recent_migrations.length > 0 && (
               <>
                 <p className="text-xs font-medium text-zinc-600 mt-3">
                   Recent Migrations
                 </p>
                 {dbCheck.recent_migrations.map((m) => (
-                  <p key={m.id} className="text-xs text-zinc-500 font-mono">
-                    {m.migration_name}
-                  </p>
+                  <div key={m.id} className="text-xs text-zinc-500 font-mono flex gap-2">
+                    <span className={m.finished_at ? "" : "text-red-500"}>{m.migration_name}</span>
+                    <span className="text-zinc-400">{m.finished_at ?? "IN PROGRESS"}</span>
+                  </div>
                 ))}
               </>
             )}
@@ -248,9 +263,9 @@ export default function AdminHealthPage() {
         )}
 
         <Check
-          label="NEXT_PUBLIC_APP_URL"
-          ok={c.app_url_present}
-          fix="Set NEXT_PUBLIC_APP_URL to your production URL (e.g. https://your-app.vercel.app). Required for auth redirects."
+          label="NEXT_PUBLIC_SITE_URL"
+          ok={c.site_url_present}
+          fix="Set NEXT_PUBLIC_SITE_URL to your production URL (e.g. https://your-app.vercel.app). Required for auth redirects."
         />
       </div>
 

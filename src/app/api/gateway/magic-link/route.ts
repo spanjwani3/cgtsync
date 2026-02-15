@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       singleUse,
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
     return NextResponse.json({
       ...link,
       url: `${appUrl}/confirm/${link.token}`,

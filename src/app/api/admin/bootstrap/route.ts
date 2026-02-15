@@ -7,8 +7,10 @@ import { EVIDENCE_BUCKET, generateRequestId, structuredError } from "@/lib/confi
 
 export async function POST() {
   const requestId = generateRequestId();
+  let userId: string | undefined;
   try {
     const auth = await requireAuth();
+    userId = auth.userId;
     const membership = await prisma.orgMember.findFirst({
       where: { userId: auth.userId },
       select: { role: true },
@@ -49,7 +51,7 @@ export async function POST() {
     if (msg === "UNAUTHORIZED")
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     console.error(
-      structuredError({ requestId, route: "/api/admin/bootstrap", error: e })
+      structuredError({ requestId, route: "/api/admin/bootstrap", error: e, userId })
     );
     return NextResponse.json(
       { requestId, error: "Internal server error" },

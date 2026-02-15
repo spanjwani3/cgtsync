@@ -3,16 +3,18 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/server/auth";
 import { OrgRole } from "@/generated/prisma/client";
 import {
-  getExpectedTables,
-  getModelTableMappings,
+  EXPECTED_TABLES,
+  MODEL_TABLE_MAPPINGS,
   generateRequestId,
   structuredError,
 } from "@/lib/config";
 
 export async function GET() {
   const requestId = generateRequestId();
+  let userId: string | undefined;
   try {
     const auth = await requireAuth();
+    userId = auth.userId;
     const membership = await prisma.orgMember.findFirst({
       where: { userId: auth.userId },
       select: { role: true },
@@ -24,9 +26,6 @@ export async function GET() {
       );
     }
 
-    const expectedTables = getExpectedTables();
-    const modelMappings = getModelTableMappings();
-
     // Query actual tables in public schema
     const rows = await prisma.$queryRawUnsafe<{ tablename: string }[]>(
       `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`
@@ -34,30 +33,41 @@ export async function GET() {
     const existingTables = rows.map((r) => r.tablename);
     const existingSet = new Set(existingTables);
 
-    const missing = expectedTables.filter((t) => !existingSet.has(t));
+    const missing = EXPECTED_TABLES.filter((t) => !existingSet.has(t));
+    const expectedSet = new Set<string>(EXPECTED_TABLES);
     const extra = existingTables.filter(
-      (t) => !expectedTables.includes(t) && t !== "_prisma_migrations"
+      (t) => !expectedSet.has(t) && t !== "_prisma_migrations"
     );
 
     // Check _prisma_migrations table for migration history
-    let migrations: { id: string; migration_name: string; finished_at: string | null }[] = [];
+    interface MigrationRow {
+      id: string;
+      migration_name: string;
+      started_at: string | null;
+      finished_at: string | null;
+    }
+    let migrations: MigrationRow[] = [];
     const hasMigrationsTable = existingTables.includes("_prisma_migrations");
+    let failedMigrations = 0;
+
     if (hasMigrationsTable) {
       try {
-        migrations = await prisma.$queryRawUnsafe<
-          { id: string; migration_name: string; finished_at: string | null }[]
-        >(
-          `SELECT id, migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 20`
+        migrations = await prisma.$queryRawUnsafe<MigrationRow[]>(
+          `SELECT id, migration_name, started_at, finished_at FROM _prisma_migrations ORDER BY started_at DESC LIMIT 20`
         );
+        failedMigrations = migrations.filter((m) => m.finished_at === null).length;
       } catch {
-        // Table might exist but be empty or have different columns
+        // Table might exist but have unexpected schema
       }
     }
+
+    // Build latest_migration convenience field
+    const latestApplied = migrations.find((m) => m.finished_at !== null) ?? null;
 
     return NextResponse.json({
       requestId,
       ok: missing.length === 0,
-      expected: modelMappings.map((m) => ({
+      expected: MODEL_TABLE_MAPPINGS.map((m) => ({
         model: m.modelName,
         table: m.tableName,
         exists: existingSet.has(m.tableName),
@@ -66,6 +76,10 @@ export async function GET() {
       extra,
       migrations_table_exists: hasMigrationsTable,
       recent_migrations: migrations,
+      failed_migrations: failedMigrations,
+      latest_migration: latestApplied
+        ? { name: latestApplied.migration_name, finished_at: latestApplied.finished_at }
+        : null,
       fix: missing.length > 0
         ? "Run: npx prisma migrate deploy (requires DIRECT_URL pointing to port 5432)"
         : null,
@@ -75,7 +89,7 @@ export async function GET() {
     if (msg === "UNAUTHORIZED")
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     console.error(
-      structuredError({ requestId, route: "/api/admin/db-check", error: e })
+      structuredError({ requestId, route: "/api/admin/db-check", error: e, userId })
     );
     return NextResponse.json(
       { requestId, error: "Internal server error" },

@@ -6,17 +6,19 @@ import { checkBucketExists } from "@/lib/server/storage";
 import {
   checkRequiredEnv,
   EVIDENCE_BUCKET,
-  getExpectedTables,
-  getModelTableMappings,
+  EXPECTED_TABLES,
+  MODEL_TABLE_MAPPINGS,
   generateRequestId,
   structuredError,
 } from "@/lib/config";
 
 export async function GET() {
   const requestId = generateRequestId();
+  let userId: string | undefined;
   try {
     // Require ADMIN role
     const auth = await requireAuth();
+    userId = auth.userId;
     const membership = await prisma.orgMember.findFirst({
       where: { userId: auth.userId },
       select: { role: true, orgId: true },
@@ -38,9 +40,7 @@ export async function GET() {
       db_error = e instanceof Error ? e.message : "Unknown DB error";
     }
 
-    // 2. Check tables exist — derived from prisma/schema.prisma, never hardcoded
-    const expectedTables = getExpectedTables();
-    const modelMappings = getModelTableMappings();
+    // 2. Check tables exist — derived from build-time generated table map
     let migrations_ok = false;
     const missing_tables: string[] = [];
     if (db_ok) {
@@ -49,7 +49,7 @@ export async function GET() {
           `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
         );
         const existing = new Set(rows.map((r) => r.tablename));
-        for (const t of expectedTables) {
+        for (const t of EXPECTED_TABLES) {
           if (!existing.has(t)) missing_tables.push(t);
         }
         migrations_ok = missing_tables.length === 0;
@@ -72,14 +72,14 @@ export async function GET() {
       bucket_error = e instanceof Error ? e.message : "Bucket check failed";
     }
 
-    // 5. NEXT_PUBLIC_APP_URL
-    const app_url_present = !!process.env.NEXT_PUBLIC_APP_URL;
+    // 5. NEXT_PUBLIC_SITE_URL
+    const site_url_present = !!process.env.NEXT_PUBLIC_SITE_URL;
 
     const all_ok =
       db_ok &&
       migrations_ok &&
       evidence_bucket_exists &&
-      app_url_present &&
+      site_url_present &&
       Object.values(required_env_present).every(Boolean);
 
     return NextResponse.json({
@@ -89,7 +89,7 @@ export async function GET() {
         db_ok,
         db_error,
         migrations_ok,
-        expected_tables: modelMappings.map((m) => ({
+        expected_tables: MODEL_TABLE_MAPPINGS.map((m) => ({
           model: m.modelName,
           table: m.tableName,
         })),
@@ -98,7 +98,7 @@ export async function GET() {
         evidence_bucket_exists,
         evidence_bucket_name: EVIDENCE_BUCKET,
         bucket_error,
-        app_url_present,
+        site_url_present,
       },
     });
   } catch (e) {
@@ -109,8 +109,7 @@ export async function GET() {
         { status: 401 }
       );
     console.error(
-      "Health check error:",
-      structuredError({ requestId, route: "/api/admin/health", error: e })
+      structuredError({ requestId, route: "/api/admin/health", error: e, userId })
     );
     return NextResponse.json(
       { requestId, error: "Internal server error" },
