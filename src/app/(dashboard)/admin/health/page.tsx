@@ -25,6 +25,7 @@ interface HealthData {
     site_url_value: string | null;
     site_url_is_localhost: boolean;
     is_vercel: boolean;
+    anthropic_api_key_present?: boolean;
   };
 }
 
@@ -276,6 +277,12 @@ export default function AdminHealthPage() {
               : "Set NEXT_PUBLIC_SITE_URL to your production URL."
           }
         />
+
+        <Check
+          label="ANTHROPIC_API_KEY (AI extraction)"
+          ok={c.anthropic_api_key_present ?? false}
+          fix="Set ANTHROPIC_API_KEY in environment variables to enable AI-powered document extraction. Get one at console.anthropic.com."
+        />
       </div>
 
       <div className="mt-8 space-y-3">
@@ -329,8 +336,9 @@ export default function AdminHealthPage() {
             <p>6. Upload Invoice (type = INVOICE) + add line items via <span className="font-mono">Invoices</span></p>
             <p>7. Map line items to clauses, manually flag/unflag with dropdown</p>
             <p>8. Generate Dispute Packet PDF from invoice list (Dispute button)</p>
-            <p>9. Generate all 5 export packs via <span className="font-mono">Export Center</span></p>
-            <p>10. Verify audit log shows all actions via <span className="font-mono">Evidence & Audit → Audit Log</span> tab</p>
+            <p>9. AI Extract: Click &ldquo;Extract&rdquo; on evidence → preview → apply to baseline/invoice/change</p>
+            <p>10. Generate all 5 export packs via <span className="font-mono">Export Center</span></p>
+            <p>11. Verify audit log shows all actions via <span className="font-mono">Evidence & Audit → Audit Log</span> tab</p>
           </div>
         </div>
       </div>

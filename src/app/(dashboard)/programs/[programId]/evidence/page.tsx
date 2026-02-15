@@ -15,6 +15,12 @@ const EVIDENCE_TYPES = [
   "OTHER",
 ] as const;
 
+const TARGET_TYPE_MAP: Record<string, string> = {
+  INVOICE: "INVOICE",
+  SOW_MSA: "BASELINE",
+  CHANGE_ORDER: "CHANGE_ORDER",
+};
+
 interface EvidenceItem {
   id: string;
   type: string;
@@ -27,6 +33,22 @@ interface EvidenceItem {
   retainUntil: string | null;
   deletedAt: string | null;
   createdAt: string;
+}
+
+interface ExtractionJob {
+  id: string;
+  evidenceId: string;
+  targetType: string;
+  status: string;
+  extractedData: Record<string, unknown> | null;
+  errorMessage: string | null;
+  confidence: number | null;
+  processingTimeMs: number | null;
+  tokensUsed: number | null;
+  modelUsed: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  evidence?: { fileName: string; type: string };
 }
 
 interface AuditEntry {
@@ -42,14 +64,17 @@ interface AuditEntry {
 
 export default function EvidencePage() {
   const { programId } = useParams<{ programId: string }>();
-  const [tab, setTab] = useState<"evidence" | "audit">("evidence");
+  const [tab, setTab] = useState<"evidence" | "extractions" | "audit">("evidence");
   const [evidences, setEvidences] = useState<EvidenceItem[]>([]);
+  const [jobs, setJobs] = useState<ExtractionJob[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState<string | null>(null);
   const [uploadType, setUploadType] = useState<string>("OTHER");
   const [error, setError] = useState("");
+  const [selectedJob, setSelectedJob] = useState<ExtractionJob | null>(null);
 
   const loadEvidence = useCallback(async () => {
     setLoading(true);
@@ -62,6 +87,18 @@ export default function EvidencePage() {
       // silent — will show empty state
     }
     setLoading(false);
+  }, [programId]);
+
+  const loadJobs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/gateway/extraction?programId=${programId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setJobs(data.jobs);
+      }
+    } catch {
+      // silent
+    }
   }, [programId]);
 
   const loadAudit = useCallback(async () => {
@@ -80,6 +117,12 @@ export default function EvidencePage() {
   useEffect(() => {
     loadEvidence();
   }, [loadEvidence]);
+
+  useEffect(() => {
+    if (tab === "extractions" && jobs.length === 0) {
+      loadJobs();
+    }
+  }, [tab, jobs.length, loadJobs]);
 
   useEffect(() => {
     if (tab === "audit" && auditEntries.length === 0) {
@@ -128,18 +171,63 @@ export default function EvidencePage() {
     }
   }
 
+  async function triggerExtraction(evidence: EvidenceItem) {
+    const targetType = TARGET_TYPE_MAP[evidence.type];
+    if (!targetType) {
+      const choice = window.prompt(
+        "Choose extraction type: BASELINE, INVOICE, or CHANGE_ORDER",
+        "BASELINE"
+      );
+      if (!choice || !["BASELINE", "INVOICE", "CHANGE_ORDER"].includes(choice.toUpperCase())) return;
+      return runExtraction(evidence.id, choice.toUpperCase());
+    }
+    return runExtraction(evidence.id, targetType);
+  }
+
+  async function runExtraction(evidenceId: string, targetType: string) {
+    setExtracting(evidenceId);
+    setError("");
+    try {
+      const res = await fetch("/api/gateway/extraction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ evidenceId, targetType }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Extraction failed");
+      }
+      // Refresh jobs list
+      await loadJobs();
+      setTab("extractions");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Extraction failed");
+    } finally {
+      setExtracting(null);
+    }
+  }
+
   function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  function statusColor(status: string): string {
+    switch (status) {
+      case "COMPLETED": return "text-green-600";
+      case "FAILED": return "text-red-600";
+      case "PROCESSING": return "text-amber-600";
+      default: return "text-zinc-400";
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Evidence & Audit</h1>
-          <p className="mt-1 text-sm text-zinc-500">All evidence files and audit trail for this program</p>
+          <h1 className="text-xl font-semibold text-zinc-900">Evidence & Extraction</h1>
+          <p className="mt-1 text-sm text-zinc-500">Upload documents and extract structured data with AI</p>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -168,6 +256,12 @@ export default function EvidencePage() {
           Evidence Files ({evidences.length})
         </button>
         <button
+          onClick={() => setTab("extractions")}
+          className={`px-4 py-2 text-sm font-medium ${tab === "extractions" ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500 hover:text-zinc-700"}`}
+        >
+          Extractions ({jobs.length || "..."})
+        </button>
+        <button
           onClick={() => setTab("audit")}
           className={`px-4 py-2 text-sm font-medium ${tab === "audit" ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500 hover:text-zinc-700"}`}
         >
@@ -175,6 +269,7 @@ export default function EvidencePage() {
         </button>
       </div>
 
+      {/* Evidence Files Tab */}
       {tab === "evidence" && (
         <div className="mt-4">
           {loading ? (
@@ -207,6 +302,13 @@ export default function EvidencePage() {
                         {!ev.finalized && (
                           <button onClick={() => finalizeEvidence(ev.id)} className="rounded bg-purple-600 px-2 py-1 text-xs text-white hover:bg-purple-500">Finalize</button>
                         )}
+                        <button
+                          onClick={() => triggerExtraction(ev)}
+                          disabled={extracting === ev.id}
+                          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+                        >
+                          {extracting === ev.id ? "Extracting..." : "Extract"}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -220,6 +322,71 @@ export default function EvidencePage() {
         </div>
       )}
 
+      {/* Extractions Tab */}
+      {tab === "extractions" && (
+        <div className="mt-4">
+          {jobs.length === 0 ? (
+            <p className="py-8 text-center text-sm text-zinc-400">No extraction jobs yet. Click &ldquo;Extract&rdquo; on an evidence file to start.</p>
+          ) : (
+            <div className="space-y-3">
+              {jobs.map((job) => (
+                <div key={job.id} className="rounded-md border border-zinc-200 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium text-zinc-900">{job.evidence?.fileName ?? "Unknown file"}</span>
+                      <span className="ml-2 rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">{job.targetType.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-medium ${statusColor(job.status)}`}>{job.status}</span>
+                      {job.confidence !== null && (
+                        <span className="text-xs text-zinc-400">
+                          {Math.round(Number(job.confidence) * 100)}% confidence
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {job.errorMessage && (
+                    <div className="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{job.errorMessage}</div>
+                  )}
+
+                  <div className="mt-2 flex items-center gap-4 text-xs text-zinc-400">
+                    <span>{new Date(job.createdAt).toLocaleString()}</span>
+                    {job.processingTimeMs && <span>{(job.processingTimeMs / 1000).toFixed(1)}s</span>}
+                    {job.tokensUsed && <span>{job.tokensUsed.toLocaleString()} tokens</span>}
+                    {job.modelUsed && <span>{job.modelUsed}</span>}
+                  </div>
+
+                  {job.status === "COMPLETED" && (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => setSelectedJob(selectedJob?.id === job.id ? null : job)}
+                        className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                      >
+                        {selectedJob?.id === job.id ? "Hide Preview" : "Preview Data"}
+                      </button>
+                      <button
+                        onClick={() => handleApply(job)}
+                        className="rounded bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-500"
+                      >
+                        Apply to {job.targetType === "BASELINE" ? "Baseline" : job.targetType === "INVOICE" ? "Invoice" : "Change Ledger"}
+                      </button>
+                    </div>
+                  )}
+
+                  {selectedJob?.id === job.id && job.extractedData && (
+                    <div className="mt-3">
+                      <ExtractionPreview data={job.extractedData} targetType={job.targetType} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Audit Log Tab */}
       {tab === "audit" && (
         <div className="mt-4">
           {auditEntries.length === 0 ? (
@@ -256,5 +423,130 @@ export default function EvidencePage() {
         </div>
       )}
     </div>
+  );
+
+  async function handleApply(job: ExtractionJob) {
+    let entityId: string | null = null;
+
+    if (job.targetType === "BASELINE") {
+      entityId = window.prompt("Enter the Baseline ID to apply extracted clauses to:");
+      if (!entityId) return;
+    } else if (job.targetType === "INVOICE") {
+      entityId = window.prompt("Enter the Invoice ID to apply extracted line items to:");
+      if (!entityId) return;
+    }
+
+    setError("");
+    try {
+      const bodyObj: Record<string, string> = {};
+      if (job.targetType === "BASELINE" && entityId) bodyObj.baselineId = entityId;
+      if (job.targetType === "INVOICE" && entityId) bodyObj.invoiceId = entityId;
+
+      const res = await fetch(`/api/gateway/extraction/${job.id}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyObj),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Apply failed");
+      }
+      alert(`Applied ${data.createdCount} item(s) from extraction.`);
+      await loadAudit();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Apply failed");
+    }
+  }
+}
+
+function ExtractionPreview({ data, targetType }: { data: Record<string, unknown>; targetType: string }) {
+  if (targetType === "BASELINE") {
+    const clauses = (data.clauses as Array<Record<string, unknown>>) ?? [];
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+        {data.documentTitle ? <p className="mb-2 text-sm font-medium text-zinc-900">{String(data.documentTitle)}</p> : null}
+        {data.summary ? <p className="mb-3 text-xs text-zinc-500">{String(data.summary)}</p> : null}
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-zinc-500">
+              <th className="pb-1">Ref</th>
+              <th className="pb-1">Type</th>
+              <th className="pb-1">Title</th>
+              <th className="pb-1">Value</th>
+              <th className="pb-1">Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clauses.map((c, i) => (
+              <tr key={i} className="border-t border-zinc-200">
+                <td className="py-1 text-zinc-500">{String(c.clauseRef ?? "-")}</td>
+                <td className="py-1"><span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs">{String(c.type ?? "OTHER")}</span></td>
+                <td className="py-1 text-zinc-900">{String(c.title ?? "")}</td>
+                <td className="py-1 font-mono">{c.value != null ? String(c.value) : "-"}</td>
+                <td className="py-1 text-zinc-500">{String(c.unit ?? "-")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {clauses.length === 0 && <p className="text-xs text-zinc-400">No clauses extracted</p>}
+      </div>
+    );
+  }
+
+  if (targetType === "INVOICE") {
+    const lineItems = (data.lineItems as Array<Record<string, unknown>>) ?? [];
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+        <div className="mb-3 grid grid-cols-4 gap-2 text-xs">
+          <div><span className="text-zinc-500">Invoice #:</span> <span className="font-medium">{String(data.invoiceNumber ?? "-")}</span></div>
+          <div><span className="text-zinc-500">Vendor:</span> <span className="font-medium">{String(data.vendorName ?? "-")}</span></div>
+          <div><span className="text-zinc-500">Date:</span> <span className="font-medium">{String(data.invoiceDate ?? "-")}</span></div>
+          <div><span className="text-zinc-500">Total:</span> <span className="font-medium font-mono">{data.totalAmount != null ? Number(data.totalAmount).toLocaleString() : "-"}</span></div>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-zinc-500">
+              <th className="pb-1">Description</th>
+              <th className="pb-1 text-right">Qty</th>
+              <th className="pb-1 text-right">Unit Price</th>
+              <th className="pb-1 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineItems.map((li, i) => (
+              <tr key={i} className="border-t border-zinc-200">
+                <td className="py-1 text-zinc-900">{String(li.description ?? "")}</td>
+                <td className="py-1 text-right font-mono">{li.quantity != null ? String(li.quantity) : "-"}</td>
+                <td className="py-1 text-right font-mono">{li.unitPrice != null ? Number(li.unitPrice).toLocaleString() : "-"}</td>
+                <td className="py-1 text-right font-mono font-medium">{li.amount != null ? Number(li.amount).toLocaleString() : "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {lineItems.length === 0 && <p className="text-xs text-zinc-400">No line items extracted</p>}
+      </div>
+    );
+  }
+
+  if (targetType === "CHANGE_ORDER") {
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs">
+        <p className="font-medium text-zinc-900">{String(data.changeTitle ?? "Untitled Change")}</p>
+        {data.description ? <p className="mt-1 text-zinc-600">{String(data.description)}</p> : null}
+        <div className="mt-2 flex gap-4">
+          <span><span className="text-zinc-500">Severity:</span> <span className="font-medium">{String(data.severity ?? "-")}</span></span>
+          <span><span className="text-zinc-500">Impact:</span> <span className="font-mono font-medium">{data.estimatedImpact != null ? Number(data.estimatedImpact).toLocaleString() : "-"}</span></span>
+          <span><span className="text-zinc-500">Effective:</span> <span>{String(data.effectiveDate ?? "-")}</span></span>
+        </div>
+        {data.summary ? <p className="mt-2 text-zinc-500">{String(data.summary)}</p> : null}
+      </div>
+    );
+  }
+
+  // Fallback: raw JSON
+  return (
+    <pre className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 overflow-auto max-h-60">
+      {JSON.stringify(data, null, 2)}
+    </pre>
   );
 }

@@ -79,6 +79,9 @@ export async function GET() {
     const site_url_is_localhost = siteUrl.includes("localhost") || siteUrl.includes("127.0.0.1");
     const site_url_ok = site_url_present && !(isVercel && site_url_is_localhost);
 
+    // 6. Anthropic API key (optional — extraction feature)
+    const anthropic_api_key_present = !!process.env.ANTHROPIC_API_KEY;
+
     const all_ok =
       db_ok &&
       migrations_ok &&
@@ -106,6 +109,7 @@ export async function GET() {
         site_url_value: siteUrl || null,
         site_url_is_localhost,
         is_vercel: isVercel,
+        anthropic_api_key_present,
       },
     });
   } catch (e) {

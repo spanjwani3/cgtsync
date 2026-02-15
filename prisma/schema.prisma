@@ -123,6 +123,11 @@ enum EventAction {
   EXPORT_GENERATED
   // Retention
   RETENTION_DELETE_EXECUTED
+  // Extraction
+  EXTRACTION_STARTED
+  EXTRACTION_COMPLETED
+  EXTRACTION_FAILED
+  EXTRACTION_APPLIED
 }
 
 enum MagicLinkScope {
@@ -136,6 +141,19 @@ enum ExportType {
   INVOICE_REVIEW_PACK
   DISPUTE_PACKET
   WEEKLY_GOVERNANCE_PACK
+}
+
+enum ExtractionJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ExtractionTargetType {
+  BASELINE
+  INVOICE
+  CHANGE_ORDER
 }
 
 // ─── Core Models ────────────────────────────────────────────
@@ -199,13 +217,14 @@ model Program {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  baselines  Baseline[]
-  changes    Change[]
-  invoices   Invoice[]
-  evidences  Evidence[]
-  eventLogs  EventLog[]
-  exports    Export[]
+  org             Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  baselines       Baseline[]
+  changes         Change[]
+  invoices        Invoice[]
+  evidences       Evidence[]
+  eventLogs       EventLog[]
+  exports         Export[]
+  extractionJobs  ExtractionJob[]
 
   @@map("programs")
 }
@@ -344,10 +363,11 @@ model Evidence {
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
-  program            Program    @relation(fields: [programId], references: [id], onDelete: Cascade)
-  baselinesAsSource  Baseline[] @relation("BaselineSource")
-  changesAsEvidence  Change[]   @relation("ChangeEvidence")
-  invoicesAsEvidence Invoice[]  @relation("InvoiceEvidence")
+  program            Program         @relation(fields: [programId], references: [id], onDelete: Cascade)
+  baselinesAsSource  Baseline[]      @relation("BaselineSource")
+  changesAsEvidence  Change[]        @relation("ChangeEvidence")
+  invoicesAsEvidence Invoice[]       @relation("InvoiceEvidence")
+  extractionJobs     ExtractionJob[]
 
   @@map("evidences")
 }
@@ -408,4 +428,32 @@ model Export {
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@map("exports")
+}
+
+// ─── AI Extraction ─────────────────────────────────────────
+
+model ExtractionJob {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  evidenceId      String                @map("evidence_id") @db.Uuid
+  programId       String                @map("program_id") @db.Uuid
+  targetType      ExtractionTargetType  @map("target_type")
+  status          ExtractionJobStatus   @default(PENDING)
+  extractedData   Json?                 @map("extracted_data")
+  errorMessage    String?               @map("error_message")
+  confidence      Decimal?              @db.Decimal(3, 2)
+  processingTimeMs Int?                 @map("processing_time_ms")
+  tokensUsed      Int?                  @map("tokens_used")
+  modelUsed       String?               @map("model_used")
+  startedAt       DateTime?             @map("started_at")
+  completedAt     DateTime?             @map("completed_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  program  Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([evidenceId])
+  @@index([programId, status])
+  @@index([programId, createdAt])
+  @@map("extraction_jobs")
 }
