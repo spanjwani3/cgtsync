@@ -1,28 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, getOrgMembership } from "@/lib/server/auth";
+import { requireAuth } from "@/lib/server/auth";
 import { OrgRole } from "@/generated/prisma/client";
 import { checkBucketExists } from "@/lib/server/storage";
-import { checkRequiredEnv, EVIDENCE_BUCKET } from "@/lib/config";
-
-/** All Prisma model table names (@@map values from schema.prisma). */
-const EXPECTED_TABLES = [
-  "users",
-  "organizations",
-  "org_members",
-  "programs",
-  "baselines",
-  "baseline_clauses",
-  "changes",
-  "invoices",
-  "invoice_line_items",
-  "evidences",
-  "event_logs",
-  "magic_links",
-  "exports",
-];
+import {
+  checkRequiredEnv,
+  EVIDENCE_BUCKET,
+  getExpectedTables,
+  getModelTableMappings,
+  generateRequestId,
+  structuredError,
+} from "@/lib/config";
 
 export async function GET() {
+  const requestId = generateRequestId();
   try {
     // Require ADMIN role
     const auth = await requireAuth();
@@ -31,7 +22,10 @@ export async function GET() {
       select: { role: true, orgId: true },
     });
     if (!membership || membership.role !== OrgRole.ADMIN) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.json(
+        { requestId, error: "Admin access required" },
+        { status: 403 }
+      );
     }
 
     // 1. Database connectivity
@@ -44,7 +38,9 @@ export async function GET() {
       db_error = e instanceof Error ? e.message : "Unknown DB error";
     }
 
-    // 2. Check tables exist
+    // 2. Check tables exist — derived from prisma/schema.prisma, never hardcoded
+    const expectedTables = getExpectedTables();
+    const modelMappings = getModelTableMappings();
     let migrations_ok = false;
     const missing_tables: string[] = [];
     if (db_ok) {
@@ -53,7 +49,7 @@ export async function GET() {
           `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
         );
         const existing = new Set(rows.map((r) => r.tablename));
-        for (const t of EXPECTED_TABLES) {
+        for (const t of expectedTables) {
           if (!existing.has(t)) missing_tables.push(t);
         }
         migrations_ok = missing_tables.length === 0;
@@ -87,11 +83,16 @@ export async function GET() {
       Object.values(required_env_present).every(Boolean);
 
     return NextResponse.json({
+      requestId,
       status: all_ok ? "healthy" : "unhealthy",
       checks: {
         db_ok,
         db_error,
         migrations_ok,
+        expected_tables: modelMappings.map((m) => ({
+          model: m.modelName,
+          table: m.tableName,
+        })),
         missing_tables,
         required_env_present,
         evidence_bucket_exists,
@@ -103,10 +104,16 @@ export async function GET() {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    console.error("Health check error:", e);
+      return NextResponse.json(
+        { requestId, error: "Unauthorized" },
+        { status: 401 }
+      );
+    console.error(
+      "Health check error:",
+      structuredError({ requestId, route: "/api/admin/health", error: e })
+    );
     return NextResponse.json(
-      { error: "Internal server error" },
+      { requestId, error: "Internal server error" },
       { status: 500 }
     );
   }

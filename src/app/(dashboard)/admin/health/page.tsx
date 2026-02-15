@@ -2,12 +2,20 @@
 
 import { useEffect, useState } from "react";
 
+interface ExpectedTable {
+  model: string;
+  table: string;
+  exists?: boolean;
+}
+
 interface HealthData {
+  requestId: string;
   status: string;
   checks: {
     db_ok: boolean;
     db_error: string | null;
     migrations_ok: boolean;
+    expected_tables: ExpectedTable[];
     missing_tables: string[];
     required_env_present: Record<string, boolean>;
     evidence_bucket_exists: boolean;
@@ -15,6 +23,17 @@ interface HealthData {
     bucket_error: string | null;
     app_url_present: boolean;
   };
+}
+
+interface DbCheckData {
+  requestId: string;
+  ok: boolean;
+  expected: ExpectedTable[];
+  missing: string[];
+  extra: string[];
+  migrations_table_exists: boolean;
+  recent_migrations: { id: string; migration_name: string; finished_at: string | null }[];
+  fix: string | null;
 }
 
 function Check({
@@ -45,21 +64,29 @@ function Check({
 
 export default function AdminHealthPage() {
   const [data, setData] = useState<HealthData | null>(null);
+  const [dbCheck, setDbCheck] = useState<DbCheckData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [showDbDetail, setShowDbDetail] = useState(false);
 
   async function fetchHealth() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/health");
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error ?? `HTTP ${res.status}`);
+      const [healthRes, dbRes] = await Promise.all([
+        fetch("/api/admin/health"),
+        fetch("/api/admin/db-check"),
+      ]);
+      if (!healthRes.ok) {
+        const body = await healthRes.json().catch(() => ({}));
+        setError(body.error ?? `HTTP ${healthRes.status}`);
         return;
       }
-      setData(await res.json());
+      setData(await healthRes.json());
+      if (dbRes.ok) {
+        setDbCheck(await dbRes.json());
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch health");
     } finally {
@@ -112,6 +139,8 @@ export default function AdminHealthPage() {
   if (!data) return null;
 
   const c = data.checks;
+  const totalTables = c.expected_tables.length;
+  const presentTables = totalTables - c.missing_tables.length;
 
   return (
     <div className="mx-auto max-w-2xl py-8">
@@ -144,7 +173,7 @@ export default function AdminHealthPage() {
         />
 
         <Check
-          label={`Migrations applied (${13 - c.missing_tables.length}/13 tables)`}
+          label={`Migrations applied (${presentTables}/${totalTables} tables)`}
           ok={c.migrations_ok}
           fix={
             c.missing_tables.length > 0
@@ -152,6 +181,51 @@ export default function AdminHealthPage() {
               : "Run: npx prisma migrate deploy"
           }
         />
+
+        {c.db_ok && (
+          <button
+            onClick={() => setShowDbDetail(!showDbDetail)}
+            className="text-xs text-zinc-500 hover:text-zinc-700 underline"
+          >
+            {showDbDetail ? "Hide" : "Show"} database detail
+          </button>
+        )}
+
+        {showDbDetail && dbCheck && (
+          <div className="rounded-md border bg-zinc-50 p-4 space-y-2">
+            <p className="text-xs font-medium text-zinc-600">
+              Table Status (from schema.prisma)
+            </p>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              {dbCheck.expected.map((t) => (
+                <div key={t.table} className="flex items-center gap-1.5">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${t.exists ? "bg-green-500" : "bg-red-500"}`}
+                  />
+                  <span className="text-zinc-500">{t.model}</span>
+                  <span className="text-zinc-400">({t.table})</span>
+                </div>
+              ))}
+            </div>
+            {dbCheck.recent_migrations.length > 0 && (
+              <>
+                <p className="text-xs font-medium text-zinc-600 mt-3">
+                  Recent Migrations
+                </p>
+                {dbCheck.recent_migrations.map((m) => (
+                  <p key={m.id} className="text-xs text-zinc-500 font-mono">
+                    {m.migration_name}
+                  </p>
+                ))}
+              </>
+            )}
+            {!dbCheck.migrations_table_exists && (
+              <p className="text-xs text-red-600">
+                _prisma_migrations table not found. Run: npx prisma migrate deploy
+              </p>
+            )}
+          </div>
+        )}
 
         <Check
           label={`Evidence bucket "${c.evidence_bucket_name}"`}
