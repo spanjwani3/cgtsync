@@ -43,6 +43,75 @@ export function getMissingEnv(): string[] {
   return REQUIRED_ENV_KEYS.filter((key) => !process.env[key]);
 }
 
+// ─── Supabase Project Consistency ────────────────────────────
+
+/**
+ * Extract a Supabase project ref from a URL or connection string.
+ * Handles:
+ *  - https://<ref>.supabase.co
+ *  - postgresql://postgres.<ref>:...@...pooler.supabase.com:...
+ *  - https://<ref>.supabase.co (SUPABASE_URL)
+ * Returns null if not parseable.
+ */
+function extractProjectRef(value: string): string | null {
+  // URL form: https://<ref>.supabase.co
+  const urlMatch = value.match(
+    /https?:\/\/([a-z0-9]+)\.supabase\.co/i
+  );
+  if (urlMatch) return urlMatch[1].toLowerCase();
+
+  // Pooler form: postgres.<ref>:<password>@...pooler.supabase.com
+  const poolerMatch = value.match(
+    /postgres\.([a-z0-9]+):/i
+  );
+  if (poolerMatch) return poolerMatch[1].toLowerCase();
+
+  return null;
+}
+
+export interface SupabaseConsistencyResult {
+  ok: boolean;
+  refs: Record<string, string | null>;
+  mismatch: string | null;
+}
+
+/**
+ * Compare project refs extracted from Supabase-related env vars.
+ * Returns ok=true if all present refs match, or only one is set.
+ */
+export function checkSupabaseProjectConsistency(): SupabaseConsistencyResult {
+  const vars = [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "SUPABASE_URL",
+    "DATABASE_URL",
+  ] as const;
+
+  const refs: Record<string, string | null> = {};
+  for (const key of vars) {
+    const val = process.env[key] ?? "";
+    refs[key] = val ? extractProjectRef(val) : null;
+  }
+
+  const uniqueRefs = new Set(
+    Object.values(refs).filter((r): r is string => r !== null)
+  );
+
+  if (uniqueRefs.size <= 1) {
+    return { ok: true, refs, mismatch: null };
+  }
+
+  const details = Object.entries(refs)
+    .filter(([, v]) => v !== null)
+    .map(([k, v]) => `${k} → ${v}`)
+    .join(", ");
+
+  return {
+    ok: false,
+    refs,
+    mismatch: `Env vars point to different Supabase projects: ${details}. All should use the same project ref.`,
+  };
+}
+
 // ─── Request ID ─────────────────────────────────────────────
 
 /** Generate a unique request ID for correlation. */

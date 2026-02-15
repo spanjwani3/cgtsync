@@ -3,14 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
+import { generateRequestId, structuredError } from "@/lib/config";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ programId: string }> }
 ) {
+  const requestId = generateRequestId();
+  let userId: string | undefined;
+  let orgId: string | undefined;
   try {
     const { programId } = await params;
-    await requireProgramAccess(programId);
+    const auth = await requireProgramAccess(programId);
+    userId = auth.userId;
+    orgId = auth.orgId;
 
     const program = await prisma.program.findUnique({
       where: { id: programId },
@@ -27,22 +33,58 @@ export async function GET(
     });
 
     if (!program) {
-      return NextResponse.json({ error: "Program not found" }, { status: 404 });
+      console.error(
+        structuredError({
+          requestId,
+          route: `GET /api/programs/${programId}`,
+          error: new Error("NOT_FOUND"),
+          userId,
+          orgId,
+          programId,
+        })
+      );
+      return NextResponse.json({ requestId, error: "Program not found" }, { status: 404 });
     }
 
     return NextResponse.json({ program });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     }
     if (message === "FORBIDDEN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      console.error(
+        structuredError({
+          requestId,
+          route: "GET /api/programs/[programId]",
+          error: e,
+          userId,
+          orgId,
+        })
+      );
+      return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
     }
     if (message === "NOT_FOUND") {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      console.error(
+        structuredError({
+          requestId,
+          route: "GET /api/programs/[programId]",
+          error: e,
+          userId,
+        })
+      );
+      return NextResponse.json({ requestId, error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error(
+      structuredError({
+        requestId,
+        route: "GET /api/programs/[programId]",
+        error: e,
+        userId,
+        orgId,
+      })
+    );
+    return NextResponse.json({ requestId, error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -50,9 +92,12 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ programId: string }> }
 ) {
+  const requestId = generateRequestId();
+  let userId: string | undefined;
   try {
     const { programId } = await params;
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
+    userId = auth.userId;
 
     const body = await req.json();
     const allowedFields = [
@@ -98,14 +143,22 @@ export async function PATCH(
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     }
     if (message === "FORBIDDEN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
     }
     if (message === "NOT_FOUND") {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ requestId, error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error(
+      structuredError({
+        requestId,
+        route: "PATCH /api/programs/[programId]",
+        error: e,
+        userId,
+      })
+    );
+    return NextResponse.json({ requestId, error: "Internal server error" }, { status: 500 });
   }
 }

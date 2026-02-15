@@ -5,6 +5,7 @@ import { OrgRole } from "@/generated/prisma/client";
 import { checkBucketExists } from "@/lib/server/storage";
 import {
   checkRequiredEnv,
+  checkSupabaseProjectConsistency,
   EVIDENCE_BUCKET,
   EXPECTED_TABLES,
   MODEL_TABLE_MAPPINGS,
@@ -82,11 +83,15 @@ export async function GET() {
     // 6. Anthropic API key (optional — extraction feature)
     const anthropic_api_key_present = !!process.env.ANTHROPIC_API_KEY;
 
+    // 7. Supabase project consistency — verify all env vars point to same project
+    const supabase_consistency = checkSupabaseProjectConsistency();
+
     const all_ok =
       db_ok &&
       migrations_ok &&
       evidence_bucket_exists &&
       site_url_ok &&
+      supabase_consistency.ok &&
       Object.values(required_env_present).every(Boolean);
 
     return NextResponse.json({
@@ -110,6 +115,9 @@ export async function GET() {
         site_url_is_localhost,
         is_vercel: isVercel,
         anthropic_api_key_present,
+        supabase_project_consistent: supabase_consistency.ok,
+        supabase_project_refs: supabase_consistency.refs,
+        supabase_project_mismatch: supabase_consistency.mismatch,
       },
     });
   } catch (e) {

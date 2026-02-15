@@ -26,6 +26,9 @@ interface HealthData {
     site_url_is_localhost: boolean;
     is_vercel: boolean;
     anthropic_api_key_present?: boolean;
+    supabase_project_consistent?: boolean;
+    supabase_project_refs?: Record<string, string | null>;
+    supabase_project_mismatch?: string | null;
   };
 }
 
@@ -283,6 +286,29 @@ export default function AdminHealthPage() {
           ok={c.anthropic_api_key_present ?? false}
           fix="Set ANTHROPIC_API_KEY in environment variables to enable AI-powered document extraction. Get one at console.anthropic.com."
         />
+
+        <Check
+          label="Supabase project consistency"
+          ok={c.supabase_project_consistent ?? true}
+          fix={
+            c.supabase_project_mismatch ??
+            "NEXT_PUBLIC_SUPABASE_URL, SUPABASE_URL, and DATABASE_URL must all reference the same Supabase project ref."
+          }
+        />
+        {c.supabase_project_refs && !c.supabase_project_consistent && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700 space-y-1">
+            <p className="font-medium">Project refs detected:</p>
+            {Object.entries(c.supabase_project_refs).map(([key, ref]) => (
+              <p key={key} className="font-mono">
+                {key}: <span className="font-semibold">{ref ?? "(not set)"}</span>
+              </p>
+            ))}
+            <p className="mt-2 text-red-600">
+              Fix: update the mismatched env vars in Vercel &rarr; Settings &rarr; Environment Variables
+              so all Supabase env vars point to the same project.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mt-8 space-y-3">

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 type Step = 1 | 2 | 3;
@@ -16,11 +16,33 @@ const ONBOARDING_EXPORT_TYPE: Record<string, string> = {
 };
 const DEFAULT_EXPORT_TYPE = "BASELINE_PACK";
 
+const LS_KEY = "cgtsync_onboarding_programId";
+
+function readStoredProgramId(): string {
+  try {
+    const v = localStorage.getItem(LS_KEY);
+    return v && UUID_RE.test(v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredProgramId(id: string) {
+  try {
+    if (id) localStorage.setItem(LS_KEY, id);
+    else localStorage.removeItem(LS_KEY);
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hydrated, setHydrated] = useState(false);
 
   // Step 1: Program info
   const [name, setName] = useState("");
@@ -41,10 +63,51 @@ export default function OnboardingPage() {
 
   const hasValidProgram = UUID_RE.test(programId);
 
+  // Sync programId to URL query + localStorage whenever it changes
+  const syncUrl = useCallback(
+    (pid: string, s: Step) => {
+      const params = new URLSearchParams();
+      if (pid) params.set("programId", pid);
+      if (s > 1) params.set("step", String(s));
+      const qs = params.toString();
+      router.replace(`/onboarding${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [router]
+  );
+
+  // On mount: restore from URL query or localStorage
+  useEffect(() => {
+    const urlPid = searchParams.get("programId") ?? "";
+    const urlStep = searchParams.get("step");
+    const storedPid = readStoredProgramId();
+    const pid = UUID_RE.test(urlPid) ? urlPid : storedPid;
+
+    if (pid) {
+      setProgramId(pid);
+      writeStoredProgramId(pid);
+      const s = urlStep === "3" ? 3 : urlStep === "2" ? 2 : 2;
+      setStep(s as Step);
+    }
+    setHydrated(true);
+    // Only run on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function updateProgramId(id: string) {
+    setProgramId(id);
+    writeStoredProgramId(id);
+  }
+
+  function advanceStep(s: Step) {
+    setStep(s);
+    syncUrl(programId, s);
+  }
+
   function resetOnboarding() {
     setStep(1);
     setError("");
     setProgramId("");
+    writeStoredProgramId("");
     setName("");
     setCdmoName("");
     setMolecule("");
@@ -55,6 +118,7 @@ export default function OnboardingPage() {
     setFileType("INVOICE");
     setFlags([]);
     setExportGenerated(false);
+    router.replace("/onboarding", { scroll: false });
   }
 
   async function handleCreateProgram() {
@@ -78,8 +142,9 @@ export default function OnboardingPage() {
         throw new Error(data.error || "Failed to create program");
       }
       const program = await res.json();
-      setProgramId(program.id);
+      updateProgramId(program.id);
       setStep(2);
+      syncUrl(program.id, 2);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -124,7 +189,7 @@ export default function OnboardingPage() {
       } else {
         setFlags(["SOW/MSA uploaded — create a Baseline to begin clause extraction"]);
       }
-      setStep(3);
+      advanceStep(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -155,11 +220,24 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "ACTIVE" }),
       });
+
+      // Clear localStorage now that onboarding is complete
+      writeStoredProgramId("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
+  }
+
+  // Don't render until client-side hydration is done (avoids flash)
+  if (!hydrated) {
+    return (
+      <div className="mx-auto max-w-2xl py-8">
+        <h1 className="text-2xl font-semibold text-zinc-900">Program Onboarding</h1>
+        <p className="mt-4 text-sm text-zinc-400">Loading...</p>
+      </div>
+    );
   }
 
   return (
@@ -168,7 +246,7 @@ export default function OnboardingPage() {
         Program Onboarding
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
-        Set up your Sponsor–CDMO program in 3 steps
+        Set up your Sponsor&ndash;CDMO program in 3 steps
       </p>
 
       {/* Step indicator */}
@@ -308,6 +386,19 @@ export default function OnboardingPage() {
       {/* Step 2: Upload Document */}
       {step === 2 && (
         <div className="mt-6 space-y-4">
+          {!hasValidProgram && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              No valid program ID. Please{" "}
+              <button onClick={resetOnboarding} className="font-medium underline">
+                start over
+              </button>{" "}
+              or{" "}
+              <Link href="/programs" className="font-medium underline">
+                select a program
+              </Link>
+              .
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-zinc-700">
               Document Type
@@ -359,14 +450,15 @@ export default function OnboardingPage() {
           <div className="flex gap-3">
             <button
               onClick={handleUpload}
-              disabled={!file || loading}
+              disabled={!file || !hasValidProgram || loading}
               className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Uploading..." : "Upload & Continue \u2192"}
             </button>
             <button
-              onClick={() => setStep(3)}
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              onClick={() => advanceStep(3)}
+              disabled={!hasValidProgram}
+              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Skip for now
             </button>
