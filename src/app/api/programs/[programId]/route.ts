@@ -20,6 +20,7 @@ export async function GET(
             baselines: true,
             changes: true,
             invoices: true,
+            commitmentTerms: true,
           },
         },
       },

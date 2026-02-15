@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { OrgRole, ClauseType, ChangeSeverity, Prisma } from "@/generated/prisma/client";
+import { OrgRole, ClauseType, ChangeSeverity, TermType, Prisma } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generateRequestId, structuredError } from "@/lib/config";
 
 const VALID_CLAUSE_TYPES = new Set(Object.values(ClauseType));
 const VALID_SEVERITIES = new Set(Object.values(ChangeSeverity));
+const VALID_TERM_TYPES = new Set(Object.values(TermType));
 
 /**
  * POST /api/gateway/extraction/[jobId]/apply
@@ -212,6 +213,71 @@ export async function POST(
         ipAddress: getClientIp(req.headers),
       });
       createdCount = 1;
+    } else if (job.targetType === "TERMS") {
+      const terms = data.terms as Array<{
+        termType?: string;
+        label?: string;
+        dateOrOffset?: string;
+        costOrPercent?: string;
+        conditions?: string;
+        excerpt?: string;
+        page?: number;
+        confidence?: number;
+      }>;
+      if (!Array.isArray(terms) || terms.length === 0) {
+        return NextResponse.json(
+          { requestId, error: "No terms found in extracted data" },
+          { status: 400 }
+        );
+      }
+
+      const maxOrder = await prisma.commitmentTerm.aggregate({
+        where: { programId },
+        _max: { sortOrder: true },
+      });
+      let sortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
+      for (const t of terms) {
+        if (!t.label) continue;
+        const termType = VALID_TERM_TYPES.has(t.termType as TermType)
+          ? (t.termType as TermType)
+          : "COMMITMENT_DATE";
+
+        // Parse dateOrOffset into a concrete deadline if it looks like a date
+        let deadlineAt: Date | null = null;
+        if (t.dateOrOffset) {
+          const parsed = Date.parse(t.dateOrOffset);
+          if (!isNaN(parsed)) deadlineAt = new Date(parsed);
+        }
+
+        const term = await prisma.commitmentTerm.create({
+          data: {
+            programId,
+            evidenceId: job.evidenceId,
+            termType,
+            label: t.label,
+            dateOrOffset: t.dateOrOffset ?? null,
+            deadlineAt,
+            costOrPercent: t.costOrPercent ?? null,
+            conditions: t.conditions ?? null,
+            excerpt: t.excerpt ?? null,
+            page: t.page ?? null,
+            confidence: t.confidence ?? null,
+            sortOrder: sortOrder++,
+          },
+        });
+
+        await logEvent({
+          programId,
+          userId,
+          action: "TERM_IMPORTED",
+          entityType: "CommitmentTerm",
+          entityId: term.id,
+          metadata: { termType, label: t.label, fromExtraction: true, jobId },
+          ipAddress: getClientIp(req.headers),
+        });
+        createdCount++;
+      }
     }
 
     await logEvent({

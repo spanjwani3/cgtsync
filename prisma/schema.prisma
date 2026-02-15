@@ -128,6 +128,10 @@ enum EventAction {
   EXTRACTION_JOB_SUCCEEDED
   EXTRACTION_JOB_FAILED
   EXTRACTION_JOB_APPLIED
+  // Commitment Terms
+  TERM_CREATED
+  TERM_UPDATED
+  TERM_IMPORTED
 }
 
 enum MagicLinkScope {
@@ -154,6 +158,16 @@ enum ExtractionTargetType {
   BASELINE
   INVOICE
   CHANGE_ORDER
+  TERMS
+}
+
+enum TermType {
+  RESERVATION_FEE
+  COMMITMENT_DATE
+  PAYMENT_MILESTONE
+  CANCELLATION_WINDOW
+  PENALTY_RULE
+  MATERIAL_ORDER_TRIGGER
 }
 
 // ─── Core Models ────────────────────────────────────────────
@@ -217,14 +231,15 @@ model Program {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  org             Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  baselines       Baseline[]
-  changes         Change[]
-  invoices        Invoice[]
-  evidences       Evidence[]
-  eventLogs       EventLog[]
-  exports         Export[]
-  extractionJobs  ExtractionJob[]
+  org              Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  baselines        Baseline[]
+  changes          Change[]
+  invoices         Invoice[]
+  evidences        Evidence[]
+  eventLogs        EventLog[]
+  exports          Export[]
+  extractionJobs   ExtractionJob[]
+  commitmentTerms  CommitmentTerm[]
 
   @@map("programs")
 }
@@ -245,10 +260,11 @@ model Baseline {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  program    Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
-  sourceFile Evidence?        @relation("BaselineSource", fields: [sourceFileId], references: [id])
-  clauses    BaselineClause[]
-  changes    Change[]
+  program         Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  sourceFile      Evidence?        @relation("BaselineSource", fields: [sourceFileId], references: [id])
+  clauses         BaselineClause[]
+  changes         Change[]
+  commitmentTerms CommitmentTerm[] @relation("TermBaseline")
 
   @@unique([programId, version])
   @@map("baselines")
@@ -363,11 +379,12 @@ model Evidence {
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
-  program            Program         @relation(fields: [programId], references: [id], onDelete: Cascade)
-  baselinesAsSource  Baseline[]      @relation("BaselineSource")
-  changesAsEvidence  Change[]        @relation("ChangeEvidence")
-  invoicesAsEvidence Invoice[]       @relation("InvoiceEvidence")
+  program            Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  baselinesAsSource  Baseline[]       @relation("BaselineSource")
+  changesAsEvidence  Change[]         @relation("ChangeEvidence")
+  invoicesAsEvidence Invoice[]        @relation("InvoiceEvidence")
   extractionJobs     ExtractionJob[]
+  termsAsEvidence    CommitmentTerm[] @relation("TermEvidence")
 
   @@map("evidences")
 }
@@ -456,4 +473,33 @@ model ExtractionJob {
   @@index([programId, status])
   @@index([programId, createdAt])
   @@map("extraction_jobs")
+}
+
+// ─── Commitment Terms (Timeline) ──────────────────────────
+
+model CommitmentTerm {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId      String    @map("program_id") @db.Uuid
+  evidenceId     String?   @map("evidence_id") @db.Uuid
+  baselineId     String?   @map("baseline_id") @db.Uuid
+  termType       TermType  @map("term_type")
+  label          String
+  dateOrOffset   String?   @map("date_or_offset")
+  deadlineAt     DateTime? @map("deadline_at")
+  costOrPercent  String?   @map("cost_or_percent")
+  conditions     String?
+  excerpt        String?
+  page           Int?
+  confidence     Decimal?  @db.Decimal(3, 2)
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  program  Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  evidence Evidence? @relation("TermEvidence", fields: [evidenceId], references: [id])
+  baseline Baseline? @relation("TermBaseline", fields: [baselineId], references: [id])
+
+  @@index([programId, deadlineAt])
+  @@index([programId, termType])
+  @@map("commitment_terms")
 }

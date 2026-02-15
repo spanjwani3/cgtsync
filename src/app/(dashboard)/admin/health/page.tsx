@@ -336,9 +336,11 @@ export default function AdminHealthPage() {
             <p>6. Upload Invoice (type = INVOICE) + add line items via <span className="font-mono">Invoices</span></p>
             <p>7. Map line items to clauses, manually flag/unflag with dropdown</p>
             <p>8. Generate Dispute Packet PDF from invoice list (Dispute button)</p>
-            <p>9. AI Extract: Click &ldquo;Extract&rdquo; on evidence → preview → apply to baseline/invoice/change</p>
-            <p>10. Generate all 5 export packs via <span className="font-mono">Export Center</span></p>
-            <p>11. Verify audit log shows all actions via <span className="font-mono">Evidence & Audit → Audit Log</span> tab</p>
+            <p>9. AI Extract: Click &ldquo;Extract&rdquo; on evidence → preview → apply to baseline/invoice/change/terms</p>
+            <p>10. Extract TERMS from SOW → apply → verify in <span className="font-mono">Commitment Timeline</span></p>
+            <p>11. Add manual term via <span className="font-mono">Commitment Timeline</span> → verify red-flag alerts for terms within 30 days</p>
+            <p>12. Generate all 5 export packs via <span className="font-mono">Export Center</span></p>
+            <p>13. Verify audit log shows all actions via <span className="font-mono">Evidence & Audit → Audit Log</span> tab</p>
           </div>
         </div>
       </div>

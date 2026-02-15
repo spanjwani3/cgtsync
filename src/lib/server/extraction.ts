@@ -108,15 +108,41 @@ export const ChangeOrderExtractionSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+const TERM_TYPES = [
+  "RESERVATION_FEE", "COMMITMENT_DATE", "PAYMENT_MILESTONE",
+  "CANCELLATION_WINDOW", "PENALTY_RULE", "MATERIAL_ORDER_TRIGGER",
+] as const;
+
+const TermRow = z.object({
+  termType: z.enum(TERM_TYPES).catch("COMMITMENT_DATE"),
+  label: z.string().min(1),
+  dateOrOffset: z.string().nullable().optional(),
+  costOrPercent: z.string().nullable().optional(),
+  conditions: z.string().nullable().optional(),
+  excerpt: z.string().min(1),
+  page: z.number().int().positive().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+export const TermsExtractionSchema = z.object({
+  documentTitle: z.string().nullable().optional(),
+  documentDate: z.string().nullable().optional(),
+  parties: z.array(z.string()).optional().default([]),
+  terms: z.array(TermRow).min(1),
+  summary: z.string().nullable().optional(),
+});
+
 export type BaselineExtraction = z.infer<typeof BaselineExtractionSchema>;
 export type InvoiceExtraction = z.infer<typeof InvoiceExtractionSchema>;
 export type ChangeOrderExtraction = z.infer<typeof ChangeOrderExtractionSchema>;
+export type TermsExtraction = z.infer<typeof TermsExtractionSchema>;
 
 function getSchemaForTarget(targetType: ExtractionTargetType): z.ZodTypeAny {
   switch (targetType) {
     case "BASELINE": return BaselineExtractionSchema;
     case "INVOICE": return InvoiceExtractionSchema;
     case "CHANGE_ORDER": return ChangeOrderExtractionSchema;
+    case "TERMS": return TermsExtractionSchema;
   }
 }
 
@@ -222,11 +248,52 @@ Return a JSON object with this exact structure:
 
 Return ONLY valid JSON, no markdown fences.`;
 
+const TERMS_PROMPT = `You are an expert contract analyst specializing in biopharma CDMO outsourcing commitments. Extract all commitment terms, deadlines, and financial obligations from this document.
+
+For each term, identify the term_type:
+- RESERVATION_FEE: Upfront fees to reserve capacity or slots
+- COMMITMENT_DATE: Hard deadlines the sponsor must meet (e.g., "confirm order by 2025-06-01")
+- PAYMENT_MILESTONE: Payment due at a specific stage (e.g., "50% upon batch release")
+- CANCELLATION_WINDOW: Deadline to cancel without penalty
+- PENALTY_RULE: Financial penalty triggered by an event (e.g., "2% per week late")
+- MATERIAL_ORDER_TRIGGER: Deadline/condition that triggers material procurement
+
+For each term, provide:
+- termType: One of the types above
+- label: Short descriptive label (e.g., "Reservation fee due", "Batch 1 commitment deadline")
+- dateOrOffset: Date (YYYY-MM-DD) or relative offset (e.g., "+90 days from contract signing")
+- costOrPercent: Financial impact (e.g., "$150,000", "2% per week", "50% of batch cost")
+- conditions: Any conditions or triggers (e.g., "if sponsor cancels after material order")
+${PROVENANCE_INSTRUCTION}
+
+Return a JSON object with this exact structure:
+{
+  "documentTitle": "Title of the document",
+  "documentDate": "Date if found, or null",
+  "parties": ["Party A name", "Party B name"],
+  "terms": [
+    {
+      "termType": "COMMITMENT_DATE",
+      "label": "Batch 1 order confirmation deadline",
+      "dateOrOffset": "2025-06-01",
+      "costOrPercent": null,
+      "conditions": "Must confirm in writing to manufacturing team",
+      "excerpt": "verbatim quote from document...",
+      "page": 4,
+      "confidence": 0.9
+    }
+  ],
+  "summary": "Brief 1-2 sentence summary of key commitment obligations"
+}
+
+Extract ALL identifiable commitment terms, deadlines, and financial obligations. Be thorough. Return ONLY valid JSON, no markdown fences.`;
+
 function getPromptForTarget(targetType: ExtractionTargetType): string {
   switch (targetType) {
     case "BASELINE": return BASELINE_PROMPT;
     case "INVOICE": return INVOICE_PROMPT;
     case "CHANGE_ORDER": return CHANGE_ORDER_PROMPT;
+    case "TERMS": return TERMS_PROMPT;
   }
 }
 
@@ -355,7 +422,7 @@ function normalizeProvenance(data: Record<string, unknown>, evidenceId: string):
   const result: Record<string, unknown> = { ...data, evidenceId };
 
   // Normalize excerpts in arrays
-  const arrayKeys = ["clauses", "lineItems", "affectedClauses"];
+  const arrayKeys = ["clauses", "lineItems", "affectedClauses", "terms"];
   for (const key of arrayKeys) {
     const arr = result[key];
     if (Array.isArray(arr)) {
@@ -440,6 +507,14 @@ function estimateConfidence(data: Record<string, unknown>, targetType: Extractio
       if (data.description) score += 0.15;
       if (data.severity) score += 0.1;
       if (data.estimatedImpact !== null && data.estimatedImpact !== undefined) score += 0.1;
+      break;
+    }
+    case "TERMS": {
+      const terms = data.terms as unknown[];
+      if (Array.isArray(terms) && terms.length > 0) score += 0.2;
+      if (data.documentTitle) score += 0.1;
+      if (data.parties && Array.isArray(data.parties) && (data.parties as unknown[]).length > 0) score += 0.1;
+      if (data.summary) score += 0.1;
       break;
     }
   }

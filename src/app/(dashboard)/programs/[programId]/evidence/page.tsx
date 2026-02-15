@@ -222,10 +222,10 @@ export default function EvidencePage() {
     const targetType = TARGET_TYPE_MAP[evidence.type];
     if (!targetType) {
       const choice = window.prompt(
-        "Choose extraction type: BASELINE, INVOICE, or CHANGE_ORDER",
+        "Choose extraction type: BASELINE, INVOICE, CHANGE_ORDER, or TERMS",
         "BASELINE"
       );
-      if (!choice || !["BASELINE", "INVOICE", "CHANGE_ORDER"].includes(choice.toUpperCase())) return;
+      if (!choice || !["BASELINE", "INVOICE", "CHANGE_ORDER", "TERMS"].includes(choice.toUpperCase())) return;
       return doExtract(evidence.id, choice.toUpperCase());
     }
     return doExtract(evidence.id, targetType);
@@ -494,7 +494,7 @@ export default function EvidencePage() {
                         onClick={() => openApplyModal(job)}
                         className="rounded bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-500"
                       >
-                        Apply to {job.targetType === "BASELINE" ? "Baseline" : job.targetType === "INVOICE" ? "Invoice" : "Change Ledger"}
+                        Apply to {job.targetType === "BASELINE" ? "Baseline" : job.targetType === "INVOICE" ? "Invoice" : job.targetType === "TERMS" ? "Timeline" : "Change Ledger"}
                       </button>
                     </div>
                   )}
@@ -523,6 +523,8 @@ export default function EvidencePage() {
                 ? "Select a DRAFT baseline to add extracted clauses to:"
                 : applyJob.targetType === "INVOICE"
                 ? "Select an invoice to add extracted line items to:"
+                : applyJob.targetType === "TERMS"
+                ? "This will import extracted commitment terms into the program timeline."
                 : "This will create a new Change entry in the program ledger."}
             </p>
 
@@ -572,7 +574,7 @@ export default function EvidencePage() {
               </button>
               <button
                 onClick={handleApply}
-                disabled={applying || (applyJob.targetType !== "CHANGE_ORDER" && !selectedEntityId)}
+                disabled={applying || (applyJob.targetType !== "CHANGE_ORDER" && applyJob.targetType !== "TERMS" && !selectedEntityId)}
                 className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
               >
                 {applying ? "Applying..." : "Apply"}
@@ -708,6 +710,41 @@ function ExtractionPreview({ data, targetType }: { data: Record<string, unknown>
         </div>
         {data.excerpt ? <p className="mt-2 text-zinc-400 italic">&ldquo;{String(data.excerpt)}&rdquo;</p> : null}
         {data.summary ? <p className="mt-2 text-zinc-500">{String(data.summary)}</p> : null}
+      </div>
+    );
+  }
+
+  if (targetType === "TERMS") {
+    const terms = (data.terms as Array<Record<string, unknown>>) ?? [];
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+        {data.documentTitle ? <p className="mb-2 text-sm font-medium text-zinc-900">{String(data.documentTitle)}</p> : null}
+        {data.summary ? <p className="mb-3 text-xs text-zinc-500">{String(data.summary)}</p> : null}
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-zinc-500">
+              <th className="pb-1">Type</th>
+              <th className="pb-1">Label</th>
+              <th className="pb-1">Date/Offset</th>
+              <th className="pb-1">Cost/Percent</th>
+              <th className="pb-1">Conf</th>
+              <th className="pb-1">Excerpt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {terms.map((t, i) => (
+              <tr key={i} className="border-t border-zinc-200">
+                <td className="py-1"><span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs">{String(t.termType ?? "-").replace(/_/g, " ")}</span></td>
+                <td className="py-1 text-zinc-900">{String(t.label ?? "")}</td>
+                <td className="py-1 font-mono">{String(t.dateOrOffset ?? "-")}</td>
+                <td className="py-1 font-mono">{String(t.costOrPercent ?? "-")}</td>
+                <td className="py-1">{t.confidence != null ? `${Math.round(Number(t.confidence) * 100)}%` : "-"}</td>
+                <td className="py-1 text-zinc-400 max-w-[200px] truncate" title={String(t.excerpt ?? "")}>{String(t.excerpt ?? "-")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {terms.length === 0 && <p className="text-xs text-zinc-400">No terms extracted</p>}
       </div>
     );
   }

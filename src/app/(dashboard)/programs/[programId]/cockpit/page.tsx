@@ -15,7 +15,7 @@ interface Program {
   currency: string;
   changeThreshold: string | null;
   activatedAt: string | null;
-  _count: { baselines: number; changes: number; invoices: number };
+  _count: { baselines: number; changes: number; invoices: number; commitmentTerms: number };
 }
 
 interface TimelineEvent {
@@ -92,7 +92,7 @@ export default function CockpitPage() {
       </div>
 
       {/* Key metrics */}
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-5">
         <Link href={`/programs/${programId}/baseline`} className="rounded-lg border border-card-border bg-card-bg p-4 transition-shadow hover:shadow-md">
           <p className="text-xs font-medium text-zinc-500">Baselines</p>
           <p className="mt-1 text-2xl font-semibold text-zinc-900">{program._count.baselines}</p>
@@ -104,6 +104,10 @@ export default function CockpitPage() {
         <Link href={`/programs/${programId}/invoices`} className="rounded-lg border border-card-border bg-card-bg p-4 transition-shadow hover:shadow-md">
           <p className="text-xs font-medium text-zinc-500">Invoices</p>
           <p className="mt-1 text-2xl font-semibold text-zinc-900">{program._count.invoices}</p>
+        </Link>
+        <Link href={`/programs/${programId}/timeline`} className="rounded-lg border border-card-border bg-card-bg p-4 transition-shadow hover:shadow-md">
+          <p className="text-xs font-medium text-zinc-500">Timeline</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">{program._count.commitmentTerms}</p>
         </Link>
         <div className="rounded-lg border border-card-border bg-card-bg p-4">
           <p className="text-xs font-medium text-zinc-500">Red Flags</p>
@@ -156,9 +160,12 @@ export default function CockpitPage() {
       )}
 
       {/* Quick links */}
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Link href={`/programs/${programId}/baseline`} className="rounded-lg border border-card-border bg-card-bg p-4 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50">
           Assumption Locker
+        </Link>
+        <Link href={`/programs/${programId}/timeline`} className="rounded-lg border border-card-border bg-card-bg p-4 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+          Commitment Timeline
         </Link>
         <Link href={`/programs/${programId}/evidence`} className="rounded-lg border border-card-border bg-card-bg p-4 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50">
           Evidence Log
