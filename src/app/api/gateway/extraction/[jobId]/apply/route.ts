@@ -217,7 +217,7 @@ export async function POST(
     await logEvent({
       programId,
       userId,
-      action: "EXTRACTION_APPLIED",
+      action: "EXTRACTION_JOB_APPLIED",
       entityType: "ExtractionJob",
       entityId: jobId,
       metadata: { targetType: job.targetType, createdCount },

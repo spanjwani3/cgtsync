@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { OrgRole, ExtractionTargetType, ExtractionJobStatus, Prisma } from "@/generated/prisma/client";
+import { OrgRole, ExtractionTargetType } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
-import { runExtraction } from "@/lib/server/extraction";
 import { generateRequestId, structuredError } from "@/lib/config";
 
 const UUID_RE =
@@ -46,7 +45,8 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/gateway/extraction
- * Trigger an extraction job on an evidence file.
+ * Create a PENDING extraction job. Returns immediately.
+ * Call POST /api/gateway/extraction/[jobId]/run to execute.
  * Body: { evidenceId, targetType }
  */
 export async function POST(req: NextRequest) {
@@ -88,93 +88,26 @@ export async function POST(req: NextRequest) {
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
     userId = auth.userId;
 
-    // Create job record
     const job = await prisma.extractionJob.create({
       data: {
         evidenceId,
         programId,
         targetType: targetType as ExtractionTargetType,
-        status: "PROCESSING",
-        startedAt: new Date(),
+        status: "PENDING",
       },
     });
 
     await logEvent({
       programId,
       userId,
-      action: "EXTRACTION_STARTED",
+      action: "EXTRACTION_JOB_CREATED",
       entityType: "ExtractionJob",
       entityId: job.id,
       metadata: { targetType, evidenceId, fileName: evidence.fileName },
       ipAddress: getClientIp(req.headers),
     });
 
-    // Run extraction (synchronous in serverless, up to 60s on Vercel Pro)
-    const startMs = Date.now();
-    try {
-      const result = await runExtraction(
-        evidence.storagePath,
-        evidence.mimeType,
-        targetType as ExtractionTargetType
-      );
-
-      const updated = await prisma.extractionJob.update({
-        where: { id: job.id },
-        data: {
-          status: "COMPLETED",
-          extractedData: result.extractedData as Prisma.InputJsonValue,
-          confidence: result.confidence,
-          tokensUsed: result.tokensUsed,
-          modelUsed: result.modelUsed,
-          processingTimeMs: Date.now() - startMs,
-          completedAt: new Date(),
-        },
-      });
-
-      await logEvent({
-        programId,
-        userId,
-        action: "EXTRACTION_COMPLETED",
-        entityType: "ExtractionJob",
-        entityId: job.id,
-        metadata: {
-          targetType,
-          confidence: result.confidence,
-          tokensUsed: result.tokensUsed,
-          processingTimeMs: Date.now() - startMs,
-        },
-        ipAddress: getClientIp(req.headers),
-      });
-
-      return NextResponse.json({ requestId, job: updated }, { status: 201 });
-    } catch (extractionError) {
-      const errMsg = extractionError instanceof Error ? extractionError.message : "Unknown extraction error";
-
-      await prisma.extractionJob.update({
-        where: { id: job.id },
-        data: {
-          status: "FAILED",
-          errorMessage: errMsg,
-          processingTimeMs: Date.now() - startMs,
-          completedAt: new Date(),
-        },
-      });
-
-      await logEvent({
-        programId,
-        userId,
-        action: "EXTRACTION_FAILED",
-        entityType: "ExtractionJob",
-        entityId: job.id,
-        metadata: { targetType, error: errMsg },
-        ipAddress: getClientIp(req.headers),
-      });
-
-      return NextResponse.json(
-        { requestId, error: `Extraction failed: ${errMsg}`, jobId: job.id },
-        { status: 422 }
-      );
-    }
+    return NextResponse.json({ requestId, job }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED")
