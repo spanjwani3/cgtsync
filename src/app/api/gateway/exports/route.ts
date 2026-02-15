@@ -7,11 +7,19 @@ import { generatePdf } from "@/lib/server/pdf";
 import { uploadEvidence, getSignedUrl } from "@/lib/server/storage";
 import { v4 as uuidv4 } from "uuid";
 
+const VALID_EXPORT_TYPES = new Set(Object.values(ExportType));
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { programId, type } = body;
     if (!programId || !type) return NextResponse.json({ error: "programId and type required" }, { status: 400 });
+    if (!VALID_EXPORT_TYPES.has(type)) {
+      return NextResponse.json(
+        { error: `type must be one of: ${Object.values(ExportType).join(", ")}` },
+        { status: 400 }
+      );
+    }
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
 
     const program = await prisma.program.findUnique({ where: { id: programId } });

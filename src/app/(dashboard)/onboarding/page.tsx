@@ -2,8 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Step = 1 | 2 | 3;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Must match prisma ExportType enum values
+const ONBOARDING_EXPORT_TYPE: Record<string, string> = {
+  INVOICE: "INVOICE_REVIEW_PACK",
+  SOW_MSA: "BASELINE_PACK",
+};
+const DEFAULT_EXPORT_TYPE = "BASELINE_PACK";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -27,6 +38,24 @@ export default function OnboardingPage() {
   // Step 3: Results
   const [flags, setFlags] = useState<string[]>([]);
   const [exportGenerated, setExportGenerated] = useState(false);
+
+  const hasValidProgram = UUID_RE.test(programId);
+
+  function resetOnboarding() {
+    setStep(1);
+    setError("");
+    setProgramId("");
+    setName("");
+    setCdmoName("");
+    setMolecule("");
+    setModality("");
+    setCurrency("USD");
+    setChangeThreshold("");
+    setFile(null);
+    setFileType("INVOICE");
+    setFlags([]);
+    setExportGenerated(false);
+  }
 
   async function handleCreateProgram() {
     setLoading(true);
@@ -104,11 +133,11 @@ export default function OnboardingPage() {
   }
 
   async function handleGenerateExport() {
+    if (!hasValidProgram) return;
     setLoading(true);
     setError("");
     try {
-      const type =
-        fileType === "INVOICE" ? "INVOICE_REVIEW_PACK" : "BASELINE_PACK";
+      const type = ONBOARDING_EXPORT_TYPE[fileType] ?? DEFAULT_EXPORT_TYPE;
       const res = await fetch("/api/gateway/exports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,7 +184,7 @@ export default function OnboardingPage() {
                     : "bg-zinc-100 text-zinc-400"
               }`}
             >
-              {s < step ? "✓" : s}
+              {s < step ? "\u2713" : s}
             </div>
             {s < 3 && (
               <div
@@ -271,7 +300,7 @@ export default function OnboardingPage() {
             disabled={!name || !cdmoName || loading}
             className="mt-4 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Creating..." : "Create Program →"}
+            {loading ? "Creating..." : "Create Program \u2192"}
           </button>
         </div>
       )}
@@ -333,7 +362,7 @@ export default function OnboardingPage() {
               disabled={!file || loading}
               className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? "Uploading..." : "Upload & Continue →"}
+              {loading ? "Uploading..." : "Upload & Continue \u2192"}
             </button>
             <button
               onClick={() => setStep(3)}
@@ -356,14 +385,38 @@ export default function OnboardingPage() {
               <ul className="mt-2 space-y-1">
                 {flags.map((flag, i) => (
                   <li key={i} className="text-sm text-amber-700">
-                    → {flag}
+                    &rarr; {flag}
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {!exportGenerated ? (
+          {!hasValidProgram ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-4">
+              <h3 className="text-sm font-medium text-red-800">
+                Program not found
+              </h3>
+              <p className="mt-1 text-sm text-red-700">
+                No valid program ID. This can happen if the page was refreshed
+                after Step 1. Please start over or select an existing program.
+              </p>
+              <div className="mt-3 flex gap-3">
+                <button
+                  onClick={resetOnboarding}
+                  className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                >
+                  Restart Onboarding
+                </button>
+                <Link
+                  href="/programs"
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Select a Program
+                </Link>
+              </div>
+            </div>
+          ) : !exportGenerated ? (
             <div>
               <p className="text-sm text-zinc-600">
                 Generate your first export pack to complete onboarding and
@@ -391,7 +444,7 @@ export default function OnboardingPage() {
                 }
                 className="mt-3 rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-600"
               >
-                Go to Program Cockpit →
+                Go to Program Cockpit &rarr;
               </button>
             </div>
           )}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 
+// Must match prisma ExportType enum values
 const EXPORT_TYPES = [
   { type: "BASELINE_PACK", label: "Baseline Pack", description: "All baselines with clauses and status" },
   { type: "CHANGE_LEDGER_PACK", label: "Change Ledger Pack", description: "Complete change ledger with severity and impact" },
