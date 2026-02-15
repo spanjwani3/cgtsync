@@ -10,6 +10,35 @@ import { v4 as uuidv4 } from "uuid";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export async function GET(req: NextRequest) {
+  const requestId = generateRequestId();
+  try {
+    const programId = req.nextUrl.searchParams.get("programId");
+    if (!programId || !UUID_RE.test(programId)) {
+      return NextResponse.json(
+        { requestId, error: "programId query parameter required (UUID)" },
+        { status: 400 }
+      );
+    }
+    await requireProgramAccess(programId);
+    const evidences = await prisma.evidence.findMany({
+      where: { programId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(evidences);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "UNAUTHORIZED")
+      return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN")
+      return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
+    return NextResponse.json(
+      { requestId, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(req: NextRequest) {
   const requestId = generateRequestId();
   let programId: string | null = null;

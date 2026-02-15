@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { OrgRole } from "@/generated/prisma/client";
+import { OrgRole, LineItemFlag } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 
@@ -76,6 +76,58 @@ export async function POST(
     }
 
     return NextResponse.json(item, { status: 201 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH — manually flag/unflag a line item.
+ * Body: { lineItemId, flag, flagNote? }
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ invoiceId: string }> }
+) {
+  try {
+    const { invoiceId } = await params;
+    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { programId: true } });
+    if (!invoice) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const auth = await requireProgramAccess(invoice.programId, OrgRole.OPERATOR);
+    const body = await req.json();
+    const { lineItemId, flag, flagNote } = body;
+
+    if (!lineItemId) return NextResponse.json({ error: "lineItemId required" }, { status: 400 });
+
+    const validFlags = Object.values(LineItemFlag);
+    if (!flag || !validFlags.includes(flag)) {
+      return NextResponse.json({ error: `flag must be one of: ${validFlags.join(", ")}` }, { status: 400 });
+    }
+
+    const item = await prisma.invoiceLineItem.findUnique({ where: { id: lineItemId } });
+    if (!item || item.invoiceId !== invoiceId) {
+      return NextResponse.json({ error: "Line item not found on this invoice" }, { status: 404 });
+    }
+
+    const updated = await prisma.invoiceLineItem.update({
+      where: { id: lineItemId },
+      data: { flag: flag as LineItemFlag, flagNote: flagNote ?? null },
+    });
+
+    await logEvent({
+      programId: invoice.programId,
+      userId: auth.userId,
+      action: "LINE_ITEM_FLAGGED",
+      entityType: "InvoiceLineItem",
+      entityId: lineItemId,
+      metadata: { flag, flagNote: flagNote ?? null, invoiceId, manual: true },
+      ipAddress: getClientIp(req.headers),
+    });
+
+    return NextResponse.json(updated);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

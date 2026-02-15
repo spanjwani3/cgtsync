@@ -318,16 +318,20 @@ export default function AdminHealthPage() {
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wide">
           Pilot Acceptance Checklist
         </h2>
-        <div className="rounded-md border bg-zinc-50 p-4 text-xs text-zinc-600 space-y-1">
-          <p>1. Create Program (via /onboarding)</p>
-          <p>2. Upload SOW as Evidence (type = SOW_MSA)</p>
-          <p>3. Create Baseline + add clauses manually</p>
-          <p>4. Lock baseline (DRAFT → RELEASED → CONFIRMED → LOCKED)</p>
-          <p>5. Create Change event manually</p>
-          <p>6. Upload Invoice (type = INVOICE) + add line items</p>
-          <p>7. Map/flag line items to clauses</p>
-          <p>8. Generate Dispute Packet PDF</p>
-          <p>9. Export governance packs</p>
+        <div className="rounded-md border bg-zinc-50 p-4 text-xs text-zinc-600 space-y-2">
+          <p className="font-medium text-zinc-700 mb-2">Complete each step to verify the pilot is ready:</p>
+          <div className="space-y-1.5">
+            <p>1. <a href="/onboarding" className="text-blue-600 underline">Create Program</a> — name, CDMO, molecule, currency</p>
+            <p>2. Upload SOW as Evidence (type = SOW_MSA) via <span className="font-mono">Evidence & Audit</span> page</p>
+            <p>3. Create Baseline + add clauses manually via <span className="font-mono">Assumption Locker</span></p>
+            <p>4. Lock baseline: DRAFT → Release → Send Magic Link → Confirm → Lock</p>
+            <p>5. Create Change event manually via <span className="font-mono">Change Ledger</span></p>
+            <p>6. Upload Invoice (type = INVOICE) + add line items via <span className="font-mono">Invoices</span></p>
+            <p>7. Map line items to clauses, manually flag/unflag with dropdown</p>
+            <p>8. Generate Dispute Packet PDF from invoice list (Dispute button)</p>
+            <p>9. Generate all 5 export packs via <span className="font-mono">Export Center</span></p>
+            <p>10. Verify audit log shows all actions via <span className="font-mono">Evidence & Audit → Audit Log</span> tab</p>
+          </div>
         </div>
       </div>
 

@@ -43,6 +43,7 @@ export default function InvoiceDetailPage() {
   });
   const [clauses, setClauses] = useState<Array<{ id: string; title: string; clauseRef: string | null; value: string | null }>>([]);
   const [changes, setChanges] = useState<Array<{ id: string; title: string; sequenceNum: number }>>([]);
+  const [flaggingId, setFlaggingId] = useState<string | null>(null);
 
   const loadInvoice = useCallback(async () => {
     const res = await fetch(`/api/invoices/${invoiceId}`);
@@ -106,6 +107,20 @@ export default function InvoiceDetailPage() {
       body: JSON.stringify({ status }),
     });
     if (res.ok) await loadInvoice();
+  }
+
+  const FLAG_OPTIONS = ["NONE", "RATE_MISMATCH", "SCOPE_CREEP", "UNAPPROVED_CHANGE", "DUPLICATE", "MISSING_BASELINE", "OTHER"] as const;
+
+  async function updateFlag(lineItemId: string, flag: string) {
+    setFlaggingId(lineItemId);
+    const flagNote = flag === "NONE" ? null : prompt("Flag note (optional):");
+    const res = await fetch(`/api/invoices/${invoiceId}/line-items`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lineItemId, flag, flagNote }),
+    });
+    if (res.ok) await loadInvoice();
+    setFlaggingId(null);
   }
 
   if (loading) return <div className="py-8 text-sm text-zinc-500">Loading invoice...</div>;
@@ -239,14 +254,21 @@ export default function InvoiceDetailPage() {
                   {!li.clause && !li.change && <span className="text-zinc-400">Unmapped</span>}
                 </td>
                 <td>
-                  {li.flag !== "NONE" ? (
-                    <div>
-                      <StatusBadge status={li.flag} />
-                      {li.flagNote && <p className="mt-0.5 text-xs text-red-600">{li.flagNote}</p>}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-green-600">OK</span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={li.flag}
+                      onChange={(e) => updateFlag(li.id, e.target.value)}
+                      disabled={flaggingId === li.id}
+                      className={`rounded border px-1.5 py-0.5 text-xs ${
+                        li.flag !== "NONE" ? "border-red-300 bg-red-50 text-red-700" : "border-zinc-200 text-zinc-500"
+                      }`}
+                    >
+                      {FLAG_OPTIONS.map((f) => (
+                        <option key={f} value={f}>{f === "NONE" ? "OK" : f.replace(/_/g, " ")}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {li.flagNote && <p className="mt-0.5 text-xs text-red-600">{li.flagNote}</p>}
                 </td>
               </tr>
             ))}
