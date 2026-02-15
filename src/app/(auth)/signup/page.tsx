@@ -16,11 +16,15 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      options: {
+        data: { full_name: fullName },
+        emailRedirectTo: `${siteUrl}/callback`,
+      },
     });
     if (error) {
       setError(error.message);

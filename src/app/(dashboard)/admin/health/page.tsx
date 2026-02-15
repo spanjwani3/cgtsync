@@ -21,7 +21,10 @@ interface HealthData {
     evidence_bucket_exists: boolean;
     evidence_bucket_name: string;
     bucket_error: string | null;
-    site_url_present: boolean;
+    site_url_ok: boolean;
+    site_url_value: string | null;
+    site_url_is_localhost: boolean;
+    is_vercel: boolean;
   };
 }
 
@@ -263,10 +266,38 @@ export default function AdminHealthPage() {
         )}
 
         <Check
-          label="NEXT_PUBLIC_SITE_URL"
-          ok={c.site_url_present}
-          fix="Set NEXT_PUBLIC_SITE_URL to your production URL (e.g. https://your-app.vercel.app). Required for auth redirects."
+          label={`NEXT_PUBLIC_SITE_URL${c.site_url_value ? ` (${c.site_url_value})` : ""}`}
+          ok={c.site_url_ok}
+          fix={
+            !c.site_url_value
+              ? "Set NEXT_PUBLIC_SITE_URL to your production URL (e.g. https://your-app.vercel.app). Required for auth email links and magic links."
+              : c.site_url_is_localhost && c.is_vercel
+              ? "NEXT_PUBLIC_SITE_URL is set to localhost but this is a Vercel deployment. Update it to your production URL in Vercel → Settings → Environment Variables."
+              : "Set NEXT_PUBLIC_SITE_URL to your production URL."
+          }
         />
+      </div>
+
+      <div className="mt-8 space-y-3">
+        <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wide">
+          Supabase Auth Settings
+        </h2>
+        <div className="rounded-md border bg-zinc-50 p-4 text-xs text-zinc-600 space-y-2">
+          <p className="font-medium text-zinc-700">Required in Supabase Dashboard → Authentication → URL Configuration:</p>
+          <div className="space-y-1 ml-2">
+            <p>1. <span className="font-mono font-medium">Site URL</span>: Set to your production URL (e.g. <span className="font-mono">https://your-app.vercel.app</span>)</p>
+            <p>2. <span className="font-mono font-medium">Redirect URLs</span>: Add these patterns:</p>
+            <div className="ml-4 font-mono text-zinc-500 space-y-0.5">
+              <p>https://your-app.vercel.app/callback</p>
+              <p>https://your-app.vercel.app/confirm/**</p>
+              <p>http://localhost:3000/callback (for local dev)</p>
+              <p>http://localhost:3000/confirm/** (for local dev)</p>
+            </div>
+          </div>
+          <p className="text-zinc-400 mt-2">
+            Without these settings, signup confirmation emails and magic links will redirect to the wrong URL.
+          </p>
+        </div>
       </div>
 
       <div className="mt-8 space-y-3">

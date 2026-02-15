@@ -72,14 +72,18 @@ export async function GET() {
       bucket_error = e instanceof Error ? e.message : "Bucket check failed";
     }
 
-    // 5. NEXT_PUBLIC_SITE_URL
-    const site_url_present = !!process.env.NEXT_PUBLIC_SITE_URL;
+    // 5. NEXT_PUBLIC_SITE_URL — must be set and not localhost in production
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+    const isVercel = !!process.env.VERCEL;
+    const site_url_present = !!siteUrl;
+    const site_url_is_localhost = siteUrl.includes("localhost") || siteUrl.includes("127.0.0.1");
+    const site_url_ok = site_url_present && !(isVercel && site_url_is_localhost);
 
     const all_ok =
       db_ok &&
       migrations_ok &&
       evidence_bucket_exists &&
-      site_url_present &&
+      site_url_ok &&
       Object.values(required_env_present).every(Boolean);
 
     return NextResponse.json({
@@ -98,7 +102,10 @@ export async function GET() {
         evidence_bucket_exists,
         evidence_bucket_name: EVIDENCE_BUCKET,
         bucket_error,
-        site_url_present,
+        site_url_ok,
+        site_url_value: siteUrl || null,
+        site_url_is_localhost,
+        is_vercel: isVercel,
       },
     });
   } catch (e) {

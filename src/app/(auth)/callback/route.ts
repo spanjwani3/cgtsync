@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const { error, data } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.user) {
-      // Upsert user record
+      // Upsert user record (idempotent)
       await prisma.user.upsert({
         where: { id: data.user.id },
         update: { email: data.user.email ?? "" },
@@ -23,26 +23,40 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      // Check if user has an org; if not, create default org
-      const existingMembership = await prisma.orgMember.findFirst({
-        where: { userId: data.user.id },
-      });
-
-      if (!existingMembership) {
-        const org = await prisma.organization.create({
-          data: {
-            name: `${data.user.email?.split("@")[0]}'s Organization`,
-            slug: `org-${data.user.id.slice(0, 8)}`,
-          },
-        });
-        await prisma.orgMember.create({
-          data: { orgId: org.id, userId: data.user.id, role: "ADMIN" },
-        });
-      }
+      // Ensure org membership exists (idempotent — handles race conditions)
+      await ensureOrgMembership(data.user.id, data.user.email ?? "");
 
       return NextResponse.redirect(new URL(next, req.url));
     }
   }
 
   return NextResponse.redirect(new URL("/login?error=auth_failed", req.url));
+}
+
+/**
+ * Create default org + membership if the user doesn't have one.
+ * Wrapped in try-catch to handle the race where two concurrent requests
+ * both see no membership and both try to create — the unique slug constraint
+ * on organizations will reject the second attempt.
+ */
+async function ensureOrgMembership(userId: string, email: string) {
+  const existing = await prisma.orgMember.findFirst({
+    where: { userId },
+  });
+  if (existing) return;
+
+  try {
+    const org = await prisma.organization.create({
+      data: {
+        name: `${email.split("@")[0]}'s Organization`,
+        slug: `org-${userId.slice(0, 8)}`,
+      },
+    });
+    await prisma.orgMember.create({
+      data: { orgId: org.id, userId, role: "ADMIN" },
+    });
+  } catch {
+    // Unique constraint violation (slug or orgId_userId) — another request
+    // already created the org. This is expected under concurrent requests.
+  }
 }

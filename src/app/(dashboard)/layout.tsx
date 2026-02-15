@@ -19,22 +19,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
     },
   });
 
-  // Ensure org membership exists
+  // Ensure org membership exists (idempotent — handles race with callback)
   let membership = await prisma.orgMember.findFirst({
     where: { userId: user.id },
     include: { org: true },
   });
 
   if (!membership) {
-    const org = await prisma.organization.create({
-      data: {
-        name: `${user.email?.split("@")[0]}'s Organization`,
-        slug: `org-${user.id.slice(0, 8)}`,
-      },
-    });
-    await prisma.orgMember.create({
-      data: { orgId: org.id, userId: user.id, role: "ADMIN" },
-    });
+    try {
+      const org = await prisma.organization.create({
+        data: {
+          name: `${user.email?.split("@")[0]}'s Organization`,
+          slug: `org-${user.id.slice(0, 8)}`,
+        },
+      });
+      await prisma.orgMember.create({
+        data: { orgId: org.id, userId: user.id, role: "ADMIN" },
+      });
+    } catch {
+      // Unique constraint violation — callback or another request already created it
+    }
     membership = await prisma.orgMember.findFirst({
       where: { userId: user.id },
       include: { org: true },
