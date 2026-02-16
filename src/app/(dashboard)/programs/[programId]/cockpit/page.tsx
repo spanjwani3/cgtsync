@@ -28,10 +28,18 @@ interface RedFlag {
   invoice: { invoiceNumber: string | null; id: string };
 }
 
+interface SmartTask {
+  id: string;
+  label: string;
+  type: "REVIEW" | "ACTION" | "DISPUTE";
+  href: string;
+}
+
 export default function CockpitPage() {
   const { programId } = useParams<{ programId: string }>();
   const [program, setProgram] = useState<Program | null>(null);
   const [flags, setFlags] = useState<RedFlag[]>([]);
+  const [tasks, setTasks] = useState<SmartTask[]>([]);
   const [loading, setLoading] = useState(true);
 
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
@@ -45,10 +53,10 @@ export default function CockpitPage() {
       setProgram(pData.program ?? pData);
     }
 
+    const allFlags: RedFlag[] = [];
     const invRes = await fetch(`/api/invoices?programId=${programId}`);
     if (invRes.ok) {
       const invoices = await invRes.json();
-      const allFlags: RedFlag[] = [];
       for (const inv of invoices) {
         const detailRes = await fetch(`/api/invoices/${inv.id}`);
         if (detailRes.ok) {
@@ -62,6 +70,25 @@ export default function CockpitPage() {
       }
       setFlags(allFlags);
     }
+
+    // Build smart tasks
+    const smartTasks: SmartTask[] = [];
+    const changesRes = await fetch(`/api/changes?programId=${programId}`);
+    if (changesRes.ok) {
+      const allChanges = await changesRes.json();
+      const pending = allChanges.filter((c: { status: string }) => c.status === "RELEASED");
+      if (pending.length > 0) {
+        smartTasks.push({ id: "pending-changes", label: `${pending.length} Pending Change${pending.length > 1 ? "s" : ""} to review`, type: "REVIEW", href: `/programs/${programId}/changes` });
+      }
+      const drafts = allChanges.filter((c: { status: string }) => c.status === "DRAFT");
+      if (drafts.length > 0) {
+        smartTasks.push({ id: "draft-changes", label: `${drafts.length} Draft Change${drafts.length > 1 ? "s" : ""} to release`, type: "ACTION", href: `/programs/${programId}/changes` });
+      }
+    }
+    if (allFlags.length > 0) {
+      smartTasks.push({ id: "flagged-invoices", label: `${allFlags.length} Invoice Flag${allFlags.length > 1 ? "s" : ""} to resolve`, type: "DISPUTE", href: `/programs/${programId}/invoices` });
+    }
+    setTasks(smartTasks);
     setLoading(false);
   }, [programId]);
 
@@ -213,6 +240,32 @@ export default function CockpitPage() {
           )}
         </div>
       </div>
+
+      {/* Smart Tasks */}
+      {tasks.length > 0 && (
+        <div className="mt-6 card">
+          <h2 className="text-sm font-semibold text-zinc-900">Smart Tasks</h2>
+          <div className="mt-3 space-y-2">
+            {tasks.map((task) => {
+              const colors = task.type === "REVIEW" ? "border-amber-200 bg-amber-50 text-amber-700"
+                : task.type === "DISPUTE" ? "border-red-200 bg-red-50 text-red-700"
+                : "border-blue-200 bg-blue-50 text-blue-700";
+              const badgeColors = task.type === "REVIEW" ? "bg-amber-100 text-amber-700"
+                : task.type === "DISPUTE" ? "bg-red-100 text-red-700"
+                : "bg-blue-100 text-blue-700";
+              return (
+                <Link key={task.id} href={task.href} className={`flex items-center justify-between rounded-lg border p-3 transition-colors hover:shadow-sm ${colors}`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${badgeColors}`}>{task.type}</span>
+                    <span className="text-sm font-medium">{task.label}</span>
+                  </div>
+                  <svg className="h-4 w-4 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick links */}
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">

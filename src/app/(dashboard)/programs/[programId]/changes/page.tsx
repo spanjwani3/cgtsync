@@ -19,30 +19,44 @@ interface Change {
   baseline?: { title: string; version: number } | null;
 }
 
+interface ProgramInfo {
+  changeThreshold: string | null;
+  currency: string;
+}
+
 export default function ChangesPage() {
   const { programId } = useParams<{ programId: string }>();
   const [changes, setChanges] = useState<Change[]>([]);
+  const [programInfo, setProgramInfo] = useState<ProgramInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [selectedChange, setSelectedChange] = useState<Change | null>(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     title: "",
     description: "",
     severity: "MEDIUM",
     estimatedImpact: "",
+    scheduleImpact: "",
   });
 
   useSyncProgram();
 
   const loadChanges = useCallback(async () => {
-    const res = await fetch(`/api/changes?programId=${programId}`);
-    if (res.ok) setChanges(await res.json());
+    const [changesRes, programRes] = await Promise.all([
+      fetch(`/api/changes?programId=${programId}`),
+      fetch(`/api/programs/${programId}`),
+    ]);
+    if (changesRes.ok) setChanges(await changesRes.json());
+    if (programRes.ok) {
+      const d = await programRes.json();
+      const p = d.program ?? d;
+      setProgramInfo({ changeThreshold: p.changeThreshold, currency: p.currency });
+    }
     setLoading(false);
   }, [programId]);
 
-  useEffect(() => {
-    loadChanges();
-  }, [loadChanges]);
+  useEffect(() => { loadChanges(); }, [loadChanges]);
 
   async function createChange() {
     if (!form.title) return;
@@ -59,7 +73,7 @@ export default function ChangesPage() {
       }),
     });
     if (res.ok) {
-      setForm({ title: "", description: "", severity: "MEDIUM", estimatedImpact: "" });
+      setForm({ title: "", description: "", severity: "MEDIUM", estimatedImpact: "", scheduleImpact: "" });
       setShowNew(false);
       await loadChanges();
     } else {
@@ -74,9 +88,8 @@ export default function ChangesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    if (res.ok) {
-      await loadChanges();
-    } else {
+    if (res.ok) { await loadChanges(); setSelectedChange(null); }
+    else {
       const data = await res.json();
       setError(data.error || "Transition failed");
     }
@@ -104,8 +117,11 @@ export default function ChangesPage() {
     </div>
   );
 
+  const threshold = programInfo?.changeThreshold ? Number(programInfo.changeThreshold) : null;
+
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted">Change Events</p>
@@ -118,75 +134,160 @@ export default function ChangesPage() {
         </button>
       </div>
 
-      {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {/* Friction threshold banner */}
+      {threshold !== null && (
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+          <svg className="h-4 w-4 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">Friction Threshold:</span>{" "}
+            Changes under {programInfo?.currency} {threshold.toLocaleString()} are <span className="font-semibold">auto-logged</span>.
+            Changes above require bilateral confirmation.
+          </p>
+        </div>
+      )}
 
+      {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {/* New change form */}
       {showNew && (
-        <div className="mt-4 rounded-lg border border-card-border bg-card-bg p-4 space-y-3">
-          <h3 className="text-sm font-medium text-zinc-900">Draft New Change</h3>
-          <input placeholder="Change title *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
-          <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" rows={2} />
-          <div className="grid grid-cols-2 gap-3">
-            <select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })} className="rounded-md border border-zinc-300 px-3 py-2 text-sm">
-              {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <input type="number" placeholder="Estimated impact ($)" value={form.estimatedImpact} onChange={(e) => setForm({ ...form, estimatedImpact: e.target.value })} className="rounded-md border border-zinc-300 px-3 py-2 text-sm" />
+        <div className="mt-4 card space-y-3">
+          <h3 className="text-sm font-semibold text-zinc-900">Draft New Change</h3>
+          <input placeholder="Change title *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input" />
+          <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" rows={2} />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Severity</label>
+              <select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })} className="input">
+                {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Cost Impact ($)</label>
+              <input type="number" placeholder="e.g., 25000" value={form.estimatedImpact} onChange={(e) => setForm({ ...form, estimatedImpact: e.target.value })} className="input" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Schedule Impact (days)</label>
+              <input type="number" placeholder="e.g., 5" value={form.scheduleImpact} onChange={(e) => setForm({ ...form, scheduleImpact: e.target.value })} className="input" />
+            </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={createChange} className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800">Create Draft</button>
-            <button onClick={() => setShowNew(false)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700">Cancel</button>
+            <button onClick={createChange} className="btn-primary">Create Draft</button>
+            <button onClick={() => setShowNew(false)} className="btn-secondary">Cancel</button>
           </div>
         </div>
       )}
 
-      <div className="mt-6">
-        <table className="w-full">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Change</th>
-              <th>Severity</th>
-              <th>Impact</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {changes.map((c) => (
-              <tr key={c.id}>
-                <td className="font-mono text-xs text-zinc-500">{c.sequenceNum}</td>
-                <td>
-                  <span className="font-medium text-zinc-900">{c.title}</span>
-                  {c.description && <p className="text-xs text-zinc-400 mt-0.5">{c.description}</p>}
-                </td>
-                <td><StatusBadge status={c.severity} /></td>
-                <td className="font-mono text-sm">
-                  {c.estimatedImpact ? `$${Number(c.estimatedImpact).toLocaleString()}` : "—"}
-                </td>
-                <td><StatusBadge status={c.status} /></td>
-                <td>
-                  <div className="flex gap-1">
-                    {c.status === "DRAFT" && (
-                      <button onClick={() => transitionChange(c.id, "RELEASED")} className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500">Release</button>
-                    )}
-                    {c.status === "RELEASED" && (
-                      <>
-                        <button onClick={() => transitionChange(c.id, "CONFIRMED")} className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-500">Confirm</button>
-                        <button onClick={() => sendMagicLink(c.id)} className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50">Magic Link</button>
-                      </>
-                    )}
-                    {(c.status === "CONFIRMED" || c.status === "LOGGED") && (
-                      <span className="text-xs text-zinc-400">Finalized</span>
-                    )}
+      {/* Change cards */}
+      <div className="mt-6 space-y-3">
+        {changes.map((c) => {
+          const isAutoLogged = threshold !== null && c.estimatedImpact && Number(c.estimatedImpact) < threshold;
+          return (
+            <div key={c.id} className="card card-hover">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={c.status} />
+                  <span className="font-mono text-xs text-muted">#{c.sequenceNum}</span>
+                  {isAutoLogged && (
+                    <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-500">Auto-logged</span>
+                  )}
+                </div>
+                <StatusBadge status={c.severity} />
+              </div>
+
+              <h3 className="mt-2 font-semibold text-zinc-900">{c.title}</h3>
+              {c.description && <p className="mt-1 text-sm text-muted">{c.description}</p>}
+
+              <div className="mt-3 flex items-center gap-4">
+                {c.estimatedImpact && (
+                  <div className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+                    <span className={`text-sm font-semibold ${Number(c.estimatedImpact) > 0 ? "text-red-600" : "text-green-600"}`}>
+                      +${Number(c.estimatedImpact).toLocaleString()}
+                    </span>
+                    <span className="text-xs text-muted">cost impact</span>
                   </div>
-                </td>
-              </tr>
-            ))}
-            {changes.length === 0 && (
-              <tr><td colSpan={6} className="py-8 text-center text-sm text-zinc-400">No changes recorded yet</td></tr>
-            )}
-          </tbody>
-        </table>
+                )}
+                <div className="text-xs text-muted">
+                  {new Date(c.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="mt-3 flex items-center gap-2 border-t border-card-border pt-3">
+                {c.status === "DRAFT" && (
+                  <button onClick={() => transitionChange(c.id, "RELEASED")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">Release</button>
+                )}
+                {c.status === "RELEASED" && (
+                  <>
+                    <button onClick={() => transitionChange(c.id, "CONFIRMED")} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">Confirm</button>
+                    <button onClick={() => sendMagicLink(c.id)} className="btn-secondary text-xs">Send Magic Link</button>
+                  </>
+                )}
+                {(c.status === "CONFIRMED" || c.status === "LOGGED") && (
+                  <span className="flex items-center gap-1 text-xs text-green-600">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                    Finalized
+                  </span>
+                )}
+                <button onClick={() => setSelectedChange(c)} className="ml-auto text-xs font-medium text-accent hover:text-accent-text">View Details</button>
+              </div>
+            </div>
+          );
+        })}
+
+        {changes.length === 0 && (
+          <div className="card flex flex-col items-center py-12">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-light">
+              <svg className="h-6 w-6 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 01-9 9" /></svg>
+            </div>
+            <p className="mt-3 font-medium text-zinc-900">No changes recorded yet</p>
+            <p className="mt-1 text-sm text-muted">Draft a change event to begin tracking scope changes</p>
+          </div>
+        )}
       </div>
+
+      {/* Detail modal */}
+      {selectedChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedChange(null)}>
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <StatusBadge status={selectedChange.status} />
+                <span className="font-mono text-xs text-muted">#{selectedChange.sequenceNum}</span>
+              </div>
+              <button onClick={() => setSelectedChange(null)} className="text-muted hover:text-zinc-900">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold text-zinc-900">{selectedChange.title}</h3>
+            {selectedChange.description && <p className="mt-2 text-sm text-muted">{selectedChange.description}</p>}
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="rounded-lg bg-zinc-50 p-3">
+                <p className="text-xs text-muted">Cost Impact</p>
+                <p className="mt-1 text-lg font-bold text-zinc-900">
+                  {selectedChange.estimatedImpact ? `+$${Number(selectedChange.estimatedImpact).toLocaleString()}` : "None"}
+                </p>
+              </div>
+              <div className="rounded-lg bg-zinc-50 p-3">
+                <p className="text-xs text-muted">Severity</p>
+                <div className="mt-1"><StatusBadge status={selectedChange.severity} /></div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg bg-zinc-50 p-3">
+              <p className="text-xs text-muted">Created</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{new Date(selectedChange.createdAt).toLocaleString()}</p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              {selectedChange.status === "RELEASED" && (
+                <>
+                  <button onClick={() => transitionChange(selectedChange.id, "CONFIRMED")} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500">Confirm</button>
+                </>
+              )}
+              <button onClick={() => setSelectedChange(null)} className="btn-secondary">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
