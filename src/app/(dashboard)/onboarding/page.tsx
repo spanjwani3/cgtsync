@@ -141,7 +141,7 @@ export default function OnboardingPage() {
         const data = await res.json();
         throw new Error(data.error || "Failed to create program");
       }
-      const program = await res.json();
+      const { program } = await res.json();
       updateProgramId(program.id);
       setStep(2);
       syncUrl(program.id, 2);
