@@ -4,6 +4,7 @@ import { OrgRole, ClauseType, ChangeSeverity, TermType, Prisma } from "@/generat
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generateRequestId, structuredError } from "@/lib/config";
+import { hasChangeExtendedColumns, CHANGE_BASE_SELECT, CHANGE_EXTENDED_SELECT } from "@/lib/server/change-compat";
 
 const VALID_CLAUSE_TYPES = new Set(Object.values(ClauseType));
 const VALID_SEVERITIES = new Set(Object.values(ChangeSeverity));
@@ -49,6 +50,10 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Check migration status for change-related branches
+    const extended = await hasChangeExtendedColumns(prisma);
+    const changeSelect = extended ? CHANGE_EXTENDED_SELECT : CHANGE_BASE_SELECT;
 
     let createdCount = 0;
 
@@ -191,16 +196,19 @@ export async function POST(
       });
       const sequenceNum = (maxSeq._max.sequenceNum ?? 0) + 1;
 
+      const createData: Record<string, unknown> = {
+        programId,
+        sequenceNum,
+        title: changeTitle,
+        description: (data.description as string) ?? null,
+        severity,
+        estimatedImpact: data.estimatedImpact != null ? Number(data.estimatedImpact) : null,
+        evidenceFileId: job.evidenceId,
+      };
+
       const change = await prisma.change.create({
-        data: {
-          programId,
-          sequenceNum,
-          title: changeTitle,
-          description: (data.description as string) ?? null,
-          severity,
-          estimatedImpact: data.estimatedImpact != null ? Number(data.estimatedImpact) : null,
-          evidenceFileId: job.evidenceId,
-        },
+        data: createData as any,
+        select: changeSelect,
       });
 
       await logEvent({
@@ -254,17 +262,22 @@ export async function POST(
           ? (c.severity as ChangeSeverity)
           : "MEDIUM";
 
+        const createData: Record<string, unknown> = {
+          programId,
+          sequenceNum: sequenceNum++,
+          title: c.changeTitle,
+          description: c.description ?? (c.speaker ? `Proposed by ${c.speaker}` : null),
+          severity,
+          estimatedImpact: c.estimatedImpact != null ? Number(c.estimatedImpact) : null,
+          evidenceFileId: job.evidenceId,
+        };
+        if (extended && c.scheduleImpactDays != null) {
+          createData.scheduleImpactDays = c.scheduleImpactDays;
+        }
+
         const change = await prisma.change.create({
-          data: {
-            programId,
-            sequenceNum: sequenceNum++,
-            title: c.changeTitle,
-            description: c.description ?? (c.speaker ? `Proposed by ${c.speaker}` : null),
-            severity,
-            estimatedImpact: c.estimatedImpact != null ? Number(c.estimatedImpact) : null,
-            scheduleImpactDays: c.scheduleImpactDays ?? null,
-            evidenceFileId: job.evidenceId,
-          },
+          data: createData as any,
+          select: changeSelect,
         });
 
         await logEvent({
@@ -304,17 +317,22 @@ export async function POST(
       if (data.description) parts.push(String(data.description));
       const description = parts.join("\n") || null;
 
+      const createData: Record<string, unknown> = {
+        programId,
+        sequenceNum,
+        title: changeTitle,
+        description,
+        severity,
+        estimatedImpact: data.estimatedImpact != null ? Number(data.estimatedImpact) : null,
+        evidenceFileId: job.evidenceId,
+      };
+      if (extended && data.scheduleImpactDays != null) {
+        createData.scheduleImpactDays = Number(data.scheduleImpactDays);
+      }
+
       const change = await prisma.change.create({
-        data: {
-          programId,
-          sequenceNum,
-          title: changeTitle,
-          description,
-          severity,
-          estimatedImpact: data.estimatedImpact != null ? Number(data.estimatedImpact) : null,
-          scheduleImpactDays: data.scheduleImpactDays != null ? Number(data.scheduleImpactDays) : null,
-          evidenceFileId: job.evidenceId,
-        },
+        data: createData as any,
+        select: changeSelect,
       });
 
       await logEvent({

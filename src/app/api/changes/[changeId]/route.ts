@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { OrgRole, EventAction } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
+import { getChangeSelect, hasChangeExtendedColumns, CHANGE_BASE_SELECT } from "@/lib/server/change-compat";
 
 export async function GET(
   req: NextRequest,
@@ -10,9 +11,14 @@ export async function GET(
 ) {
   try {
     const { changeId } = await params;
+    const select = await getChangeSelect(prisma);
     const change = await prisma.change.findUnique({
       where: { id: changeId },
-      include: { baseline: { select: { title: true, version: true } }, evidenceFile: true },
+      select: {
+        ...select,
+        baseline: { select: { title: true, version: true } },
+        evidenceFile: true,
+      },
     });
     if (!change) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await requireProgramAccess(change.programId);
@@ -31,18 +37,28 @@ export async function PATCH(
 ) {
   try {
     const { changeId } = await params;
-    const change = await prisma.change.findUnique({ where: { id: changeId } });
+    // Use base select for initial lookup (always safe)
+    const change = await prisma.change.findUnique({
+      where: { id: changeId },
+      select: CHANGE_BASE_SELECT,
+    });
     if (!change) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const auth = await requireProgramAccess(change.programId, OrgRole.OPERATOR);
     const body = await req.json();
     const { status, evidenceFileId, reasonCode, scheduleImpactDays, confirmationMode, shadowEvidenceId } = body;
+
+    const extended = await hasChangeExtendedColumns(prisma);
+    const select = await getChangeSelect(prisma);
     const data: Record<string, unknown> = {};
+
     if (evidenceFileId) data.evidenceFileId = evidenceFileId;
-    if (reasonCode !== undefined) data.reasonCode = reasonCode;
-    if (scheduleImpactDays !== undefined) data.scheduleImpactDays = scheduleImpactDays != null ? parseInt(String(scheduleImpactDays)) : null;
+    if (extended) {
+      if (reasonCode !== undefined) data.reasonCode = reasonCode;
+      if (scheduleImpactDays !== undefined) data.scheduleImpactDays = scheduleImpactDays != null ? parseInt(String(scheduleImpactDays)) : null;
+    }
 
     // Shadow confirmation: user uploads evidence of CDMO agreement
-    if (confirmationMode === "SHADOW" && shadowEvidenceId) {
+    if (extended && confirmationMode === "SHADOW" && shadowEvidenceId) {
       const evidence = await prisma.evidence.findUnique({ where: { id: shadowEvidenceId } });
       if (!evidence || evidence.programId !== change.programId) {
         return NextResponse.json({ error: "Evidence not found or does not belong to this program" }, { status: 400 });
@@ -51,7 +67,26 @@ export async function PATCH(
       data.evidenceFileId = shadowEvidenceId;
       data.status = "CONFIRMED";
       data.confirmedAt = new Date();
-      const updated = await prisma.change.update({ where: { id: changeId }, data });
+      const updated = await prisma.change.update({ where: { id: changeId }, data: data as any, select });
+      await logEvent({
+        programId: change.programId, userId: auth.userId, action: EventAction.CHANGE_CONFIRMED,
+        entityType: "Change", entityId: changeId,
+        metadata: { confirmationMode: "SHADOW", evidenceId: shadowEvidenceId },
+        ipAddress: getClientIp(req.headers),
+      });
+      return NextResponse.json(updated);
+    }
+
+    // Non-extended shadow fallback: just confirm directly without confirmationMode
+    if (!extended && confirmationMode === "SHADOW" && shadowEvidenceId) {
+      const evidence = await prisma.evidence.findUnique({ where: { id: shadowEvidenceId } });
+      if (!evidence || evidence.programId !== change.programId) {
+        return NextResponse.json({ error: "Evidence not found or does not belong to this program" }, { status: 400 });
+      }
+      data.evidenceFileId = shadowEvidenceId;
+      data.status = "CONFIRMED";
+      data.confirmedAt = new Date();
+      const updated = await prisma.change.update({ where: { id: changeId }, data: data as any, select });
       await logEvent({
         programId: change.programId, userId: auth.userId, action: EventAction.CHANGE_CONFIRMED,
         entityType: "Change", entityId: changeId,
@@ -100,7 +135,7 @@ export async function PATCH(
       }
     }
 
-    const updated = await prisma.change.update({ where: { id: changeId }, data });
+    const updated = await prisma.change.update({ where: { id: changeId }, data: data as any, select });
 
     if (status && data.status !== "LOGGED") {
       const actionMap: Record<string, EventAction> = {

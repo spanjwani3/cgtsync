@@ -3,15 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
+import { getChangeSelect, hasChangeExtendedColumns } from "@/lib/server/change-compat";
 
 export async function GET(req: NextRequest) {
   try {
     const programId = req.nextUrl.searchParams.get("programId");
     if (!programId) return NextResponse.json({ error: "programId required" }, { status: 400 });
     await requireProgramAccess(programId);
+    const select = await getChangeSelect(prisma);
     const changes = await prisma.change.findMany({
       where: { programId },
-      include: { baseline: { select: { title: true, version: true } } },
+      select: {
+        ...select,
+        baseline: { select: { title: true, version: true } },
+      },
       orderBy: { sequenceNum: "asc" },
     });
     return NextResponse.json(changes);
@@ -32,15 +37,22 @@ export async function POST(req: NextRequest) {
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
     const maxSeq = await prisma.change.aggregate({ where: { programId }, _max: { sequenceNum: true } });
     const sequenceNum = (maxSeq._max.sequenceNum ?? 0) + 1;
-    const change = await prisma.change.create({
-      data: {
-        programId, baselineId: baselineId ?? null, sequenceNum, title,
-        description: description ?? null, severity: severity ?? "MEDIUM",
-        estimatedImpact: estimatedImpact ?? null,
-        reasonCode: reasonCode ?? null,
-        scheduleImpactDays: scheduleImpactDays != null ? parseInt(String(scheduleImpactDays)) : null,
-      },
-    });
+
+    const extended = await hasChangeExtendedColumns(prisma);
+    const select = await getChangeSelect(prisma);
+
+    const data: Record<string, unknown> = {
+      programId, baselineId: baselineId ?? null, sequenceNum, title,
+      description: description ?? null, severity: severity ?? "MEDIUM",
+      estimatedImpact: estimatedImpact ?? null,
+    };
+    if (extended) {
+      data.reasonCode = reasonCode ?? null;
+      data.scheduleImpactDays = scheduleImpactDays != null ? parseInt(String(scheduleImpactDays)) : null;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const change = await prisma.change.create({ data: data as any, select });
     await logEvent({
       programId, userId: auth.userId, action: "CHANGE_DRAFTED",
       entityType: "Change", entityId: change.id, metadata: { sequenceNum, title },
