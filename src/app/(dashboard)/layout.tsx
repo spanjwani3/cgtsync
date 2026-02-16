@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { ProgramProvider } from "@/components/layout/ProgramContext";
+import { AuditDrawerProvider } from "@/components/layout/AuditDrawerContext";
 import SidebarWithContext from "@/components/layout/SidebarWithContext";
+import AuditDrawer from "@/components/layout/AuditDrawer";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -49,12 +51,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="min-h-screen bg-background">
       <ProgramProvider>
-        <SidebarWithContext
-          orgName={membership?.org.name ?? "Organization"}
-          userEmail={user.email ?? ""}
-          userName={user.user_metadata?.full_name ?? undefined}
-        />
-        <main className="ml-60 min-h-screen p-6 lg:p-8">{children}</main>
+        <AuditDrawerProvider>
+          <SidebarWithContext
+            orgName={membership?.org.name ?? "Organization"}
+            userEmail={user.email ?? ""}
+            userName={user.user_metadata?.full_name ?? undefined}
+          />
+          <main className="ml-60 min-h-screen p-6 lg:p-8">{children}</main>
+          <AuditDrawer />
+        </AuditDrawerProvider>
       </ProgramProvider>
     </div>
   );

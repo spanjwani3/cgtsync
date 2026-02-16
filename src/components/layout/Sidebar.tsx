@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useAuditDrawer } from "./AuditDrawerContext";
 
 /* ───── SVG icon components ───── */
 
@@ -132,6 +133,7 @@ interface SidebarProps {
 export default function Sidebar({ orgName, userEmail, userName, currentProgram }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { toggle: toggleAudit } = useAuditDrawer();
 
   async function handleLogout() {
     const supabase = createClient();
@@ -193,6 +195,13 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
               );
             })}
             <div className="mt-4 border-t border-sidebar-border pt-3">
+              <button
+                onClick={toggleAudit}
+                className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+              >
+                <FileIcon className="h-4 w-4 flex-shrink-0" />
+                Audit Log
+              </button>
               <Link
                 href="/programs"
                 className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"

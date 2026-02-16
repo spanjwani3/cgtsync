@@ -57,8 +57,8 @@ export default function ChangesPage() {
     reasonCode: "",
   });
 
-  // Reason code gate: when user clicks Release on a draft missing reasonCode
-  const [releaseGate, setReleaseGate] = useState<{ changeId: string; reasonCode: string; scheduleImpactDays: string } | null>(null);
+  // Release gate: require reason code, cost impact, and schedule impact before releasing
+  const [releaseGate, setReleaseGate] = useState<{ changeId: string; reasonCode: string; estimatedImpact: string; scheduleImpactDays: string } | null>(null);
 
   const impactKeyRef = useRef(0);
 
@@ -115,9 +115,17 @@ export default function ChangesPage() {
     const change = changes.find((c) => c.id === changeId);
     if (!change) return;
 
-    // Reason code gate: require reason code before releasing
-    if (!change.reasonCode) {
-      setReleaseGate({ changeId, reasonCode: "", scheduleImpactDays: change.scheduleImpactDays?.toString() ?? "" });
+    // Gate: require reason code, cost impact, and schedule impact before releasing
+    const missingReason = !change.reasonCode;
+    const missingImpact = !change.estimatedImpact;
+    const missingDays = change.scheduleImpactDays == null;
+    if (missingReason || missingImpact || missingDays) {
+      setReleaseGate({
+        changeId,
+        reasonCode: change.reasonCode ?? "",
+        estimatedImpact: change.estimatedImpact ?? "",
+        scheduleImpactDays: change.scheduleImpactDays?.toString() ?? "",
+      });
       return;
     }
 
@@ -125,21 +133,22 @@ export default function ChangesPage() {
   }
 
   async function submitReleaseGate() {
-    if (!releaseGate || !releaseGate.reasonCode) return;
+    if (!releaseGate || !releaseGate.reasonCode || !releaseGate.estimatedImpact || !releaseGate.scheduleImpactDays) return;
     setError("");
 
-    // First PATCH reason code + schedule impact
+    // First PATCH all required fields
     const patchRes = await fetch(`/api/changes/${releaseGate.changeId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         reasonCode: releaseGate.reasonCode,
-        scheduleImpactDays: releaseGate.scheduleImpactDays ? parseInt(releaseGate.scheduleImpactDays) : null,
+        estimatedImpact: parseFloat(releaseGate.estimatedImpact),
+        scheduleImpactDays: parseInt(releaseGate.scheduleImpactDays),
       }),
     });
     if (!patchRes.ok) {
       const d = await patchRes.json().catch(() => ({}));
-      setError(d.error ?? "Failed to update reason code");
+      setError(d.error ?? "Failed to update change fields");
       return;
     }
 
@@ -410,11 +419,31 @@ export default function ChangesPage() {
               <p className="mt-1 text-sm font-medium text-zinc-900">{new Date(selectedChange.createdAt).toLocaleString()}</p>
             </div>
 
-            {/* Reason code gate (inline form before release) */}
+            {/* Release gate: require Days + Dollars + Reason before releasing */}
             {releaseGate && releaseGate.changeId === selectedChange.id && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-amber-800">A reason code is required before releasing this change.</p>
-                <div className="grid grid-cols-2 gap-3">
+                <p className="text-sm font-medium text-amber-800">Cost impact, schedule impact, and reason code are required before releasing.</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Cost Impact ($) *</label>
+                    <input
+                      type="number"
+                      value={releaseGate.estimatedImpact}
+                      onChange={(e) => setReleaseGate({ ...releaseGate, estimatedImpact: e.target.value })}
+                      placeholder="e.g., 25000"
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Schedule Impact (days) *</label>
+                    <input
+                      type="number"
+                      value={releaseGate.scheduleImpactDays}
+                      onChange={(e) => setReleaseGate({ ...releaseGate, scheduleImpactDays: e.target.value })}
+                      placeholder="e.g., 5"
+                      className="input"
+                    />
+                  </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-muted">Reason Code *</label>
                     <select
@@ -426,19 +455,9 @@ export default function ChangesPage() {
                       {Object.entries(REASON_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted">Schedule Impact (days)</label>
-                    <input
-                      type="number"
-                      value={releaseGate.scheduleImpactDays}
-                      onChange={(e) => setReleaseGate({ ...releaseGate, scheduleImpactDays: e.target.value })}
-                      placeholder="e.g., 5"
-                      className="input"
-                    />
-                  </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={submitReleaseGate} disabled={!releaseGate.reasonCode} className="btn-primary disabled:opacity-50">
+                  <button onClick={submitReleaseGate} disabled={!releaseGate.reasonCode || !releaseGate.estimatedImpact || !releaseGate.scheduleImpactDays} className="btn-primary disabled:opacity-50">
                     Release
                   </button>
                   <button onClick={() => setReleaseGate(null)} className="btn-secondary">Cancel</button>

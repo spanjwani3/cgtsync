@@ -19,6 +19,26 @@ interface Program {
   _count: { baselines: number; changes: number; invoices: number; commitmentTerms: number };
 }
 
+interface Baseline {
+  id: string;
+  version: number;
+  title: string;
+  status: string;
+  lockedAt: string | null;
+  confirmedAt: string | null;
+}
+
+interface Change {
+  id: string;
+  sequenceNum: number;
+  title: string;
+  status: string;
+  severity: string;
+  estimatedImpact: string | null;
+  scheduleImpactDays?: number | null;
+  createdAt: string;
+}
+
 interface RedFlag {
   id: string;
   description: string;
@@ -38,6 +58,8 @@ interface SmartTask {
 export default function CockpitPage() {
   const { programId } = useParams<{ programId: string }>();
   const [program, setProgram] = useState<Program | null>(null);
+  const [baselines, setBaselines] = useState<Baseline[]>([]);
+  const [changes, setChanges] = useState<Change[]>([]);
   const [flags, setFlags] = useState<RedFlag[]>([]);
   const [tasks, setTasks] = useState<SmartTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,14 +67,29 @@ export default function CockpitPage() {
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
 
   const load = useCallback(async () => {
-    const [pRes] = await Promise.all([
+    // Fetch program, baselines, and changes in parallel
+    const [pRes, bRes, cRes] = await Promise.all([
       fetch(`/api/programs/${programId}`),
+      fetch(`/api/baselines?programId=${programId}`),
+      fetch(`/api/changes?programId=${programId}`),
     ]);
+
     if (pRes.ok) {
       const pData = await pRes.json();
       setProgram(pData.program ?? pData);
     }
 
+    let allChanges: Change[] = [];
+    if (bRes.ok) {
+      const bData = await bRes.json();
+      setBaselines(bData);
+    }
+    if (cRes.ok) {
+      allChanges = await cRes.json();
+      setChanges(allChanges);
+    }
+
+    // Fetch invoice flags
     const allFlags: RedFlag[] = [];
     const invRes = await fetch(`/api/invoices?programId=${programId}`);
     if (invRes.ok) {
@@ -73,17 +110,13 @@ export default function CockpitPage() {
 
     // Build smart tasks
     const smartTasks: SmartTask[] = [];
-    const changesRes = await fetch(`/api/changes?programId=${programId}`);
-    if (changesRes.ok) {
-      const allChanges = await changesRes.json();
-      const pending = allChanges.filter((c: { status: string }) => c.status === "RELEASED");
-      if (pending.length > 0) {
-        smartTasks.push({ id: "pending-changes", label: `${pending.length} Pending Change${pending.length > 1 ? "s" : ""} to review`, type: "REVIEW", href: `/programs/${programId}/changes` });
-      }
-      const drafts = allChanges.filter((c: { status: string }) => c.status === "DRAFT");
-      if (drafts.length > 0) {
-        smartTasks.push({ id: "draft-changes", label: `${drafts.length} Draft Change${drafts.length > 1 ? "s" : ""} to release`, type: "ACTION", href: `/programs/${programId}/changes` });
-      }
+    const pending = allChanges.filter((c) => c.status === "RELEASED");
+    if (pending.length > 0) {
+      smartTasks.push({ id: "pending-changes", label: `${pending.length} Pending Change${pending.length > 1 ? "s" : ""} to review`, type: "REVIEW", href: `/programs/${programId}/changes` });
+    }
+    const drafts = allChanges.filter((c) => c.status === "DRAFT");
+    if (drafts.length > 0) {
+      smartTasks.push({ id: "draft-changes", label: `${drafts.length} Draft Change${drafts.length > 1 ? "s" : ""} to release`, type: "ACTION", href: `/programs/${programId}/changes` });
     }
     if (allFlags.length > 0) {
       smartTasks.push({ id: "flagged-invoices", label: `${allFlags.length} Invoice Flag${allFlags.length > 1 ? "s" : ""} to resolve`, type: "DISPUTE", href: `/programs/${programId}/invoices` });
@@ -104,8 +137,78 @@ export default function CockpitPage() {
   );
   if (!program) return <div className="py-8 text-sm text-red-500">Program not found</div>;
 
-  const latestBaseline = program._count.baselines > 0 ? "Active" : "None";
-  const pendingChanges = program._count.changes;
+  // ── Truth Status: Show actual baseline version + lock state ──
+  const latestBaseline = baselines.length > 0 ? baselines[0] : null; // sorted desc by version
+  let truthLabel: string;
+  let truthSub: string;
+  let truthColor: string;
+  if (!latestBaseline) {
+    truthLabel = "No Baseline";
+    truthSub = "Upload SOW to start";
+    truthColor = "text-zinc-400";
+  } else if (latestBaseline.status === "LOCKED") {
+    truthLabel = `Locked v${latestBaseline.version}`;
+    truthSub = latestBaseline.title;
+    truthColor = "text-green-600";
+  } else if (latestBaseline.status === "CONFIRMED") {
+    truthLabel = `Confirmed v${latestBaseline.version}`;
+    truthSub = "Awaiting lock";
+    truthColor = "text-blue-600";
+  } else if (latestBaseline.status === "RELEASED") {
+    truthLabel = `Released v${latestBaseline.version}`;
+    truthSub = "Awaiting CDMO confirmation";
+    truthColor = "text-amber-600";
+  } else {
+    truthLabel = `Draft v${latestBaseline.version}`;
+    truthSub = "Not yet released";
+    truthColor = "text-zinc-500";
+  }
+
+  // ── Change Velocity: monthly $ + days delta ──
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonthChanges = changes.filter((c) => new Date(c.createdAt) >= monthStart);
+  const monthlyDollars = thisMonthChanges.reduce((sum, c) => sum + (c.estimatedImpact ? Math.abs(Number(c.estimatedImpact)) : 0), 0);
+  const monthlyDays = thisMonthChanges.reduce((sum, c) => sum + (c.scheduleImpactDays ? Math.abs(c.scheduleImpactDays) : 0), 0);
+
+  const fmtDollars = monthlyDollars >= 1000
+    ? `${program.currency} ${(monthlyDollars / 1000).toFixed(monthlyDollars >= 10000 ? 0 : 1)}k`
+    : `${program.currency} ${monthlyDollars.toLocaleString()}`;
+
+  let velocityLabel: string;
+  if (monthlyDollars > 0 && monthlyDays > 0) {
+    velocityLabel = `+${fmtDollars} / +${monthlyDays}d`;
+  } else if (monthlyDollars > 0) {
+    velocityLabel = `+${fmtDollars}`;
+  } else if (monthlyDays > 0) {
+    velocityLabel = `+${monthlyDays} days`;
+  } else {
+    velocityLabel = "No drift";
+  }
+  const velocitySub = `${thisMonthChanges.length} change${thisMonthChanges.length !== 1 ? "s" : ""} this month`;
+
+  // ── Pending Confirmations: RELEASED changes/baselines awaiting CDMO ──
+  const pendingConfirmations: { id: string; label: string; type: string; href: string }[] = [];
+  for (const b of baselines) {
+    if (b.status === "RELEASED") {
+      pendingConfirmations.push({
+        id: `b-${b.id}`,
+        label: `Baseline v${b.version}: ${b.title}`,
+        type: "BASELINE",
+        href: `/programs/${programId}/baseline`,
+      });
+    }
+  }
+  for (const c of changes) {
+    if (c.status === "RELEASED") {
+      pendingConfirmations.push({
+        id: `c-${c.id}`,
+        label: `Change #${c.sequenceNum}: ${c.title}`,
+        type: "CHANGE",
+        href: `/programs/${programId}/changes`,
+      });
+    }
+  }
 
   return (
     <div>
@@ -124,7 +227,7 @@ export default function CockpitPage() {
         </div>
       </div>
 
-      {/* Metric cards — styled like demo */}
+      {/* Metric cards */}
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Link href={`/programs/${programId}/baseline`} className="card card-hover">
           <div className="flex items-center justify-between">
@@ -133,8 +236,8 @@ export default function CockpitPage() {
               <svg className="h-4 w-4 text-purple-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
             </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-zinc-900">{latestBaseline}</p>
-          <p className="mt-1 text-xs text-muted">{program._count.baselines} baseline{program._count.baselines !== 1 ? "s" : ""} total</p>
+          <p className={`mt-2 text-xl font-bold ${truthColor}`}>{truthLabel}</p>
+          <p className="mt-1 truncate text-xs text-muted">{truthSub}</p>
         </Link>
 
         <Link href={`/programs/${programId}/timeline`} className="card card-hover">
@@ -155,8 +258,10 @@ export default function CockpitPage() {
               <svg className="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>
             </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-zinc-900">{pendingChanges}</p>
-          <p className="mt-1 text-xs text-muted">total change events</p>
+          <p className={`mt-2 text-xl font-bold ${monthlyDollars > 0 || monthlyDays > 0 ? "text-amber-600" : "text-zinc-900"}`}>
+            {velocityLabel}
+          </p>
+          <p className="mt-1 text-xs text-muted">{velocitySub}</p>
         </Link>
 
         <Link href={`/programs/${programId}/invoices`} className="card card-hover">
@@ -172,6 +277,34 @@ export default function CockpitPage() {
           <p className="mt-1 text-xs text-muted">{program._count.invoices} invoice{program._count.invoices !== 1 ? "s" : ""} total</p>
         </Link>
       </div>
+
+      {/* Pending Confirmations — CDMO action items */}
+      {pendingConfirmations.length > 0 && (
+        <div className="mt-6 card border-amber-200 bg-amber-50/30">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-900">Pending Confirmations</h2>
+            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-bold text-amber-700">{pendingConfirmations.length}</span>
+          </div>
+          <p className="mt-1 text-xs text-muted">Items sent to CDMO awaiting confirmation</p>
+          <div className="mt-3 space-y-2">
+            {pendingConfirmations.map((item) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 transition-colors hover:shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
+                    item.type === "BASELINE" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"
+                  }`}>{item.type}</span>
+                  <span className="text-sm font-medium text-zinc-700">{item.label}</span>
+                </div>
+                <span className="text-xs text-amber-600">Awaiting response</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Two-column: Details + Red Flags */}
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

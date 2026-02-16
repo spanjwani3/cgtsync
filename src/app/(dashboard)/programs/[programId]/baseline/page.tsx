@@ -60,6 +60,7 @@ export default function BaselinePage() {
   const [clauseForm, setClauseForm] = useState({ clauseRef: "", type: "SCOPE", title: "", description: "", value: "", unit: "" });
   const [error, setError] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [clauseReview, setClauseReview] = useState<Record<string, "accepted" | "rejected">>({});
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -198,6 +199,26 @@ export default function BaselinePage() {
       setShowConfirmModal(false);
       alert(`Magic link copied to clipboard!\n\n${data.url}\n\nExpires: ${new Date(data.expiresAt).toLocaleString()}`);
     }
+  }
+
+  /* ───── Accept / Reject per clause ───── */
+
+  function acceptClause(clauseId: string) {
+    setClauseReview((prev) => {
+      const copy = { ...prev };
+      if (copy[clauseId] === "accepted") delete copy[clauseId]; // toggle off
+      else copy[clauseId] = "accepted";
+      return copy;
+    });
+  }
+
+  async function rejectClause(clauseId: string) {
+    setClauseReview((prev) => {
+      const copy = { ...prev };
+      copy[clauseId] = "rejected";
+      return copy;
+    });
+    await deleteClause(clauseId);
   }
 
   /* ───── Edit clause ───── */
@@ -413,7 +434,9 @@ export default function BaselinePage() {
                     <div className="space-y-2">
                       {group.items.map((c, i) => (
                         <TruthItemCard key={c.id} clause={c} index={i} programId={programId} isDraft={selected.status === "DRAFT"} isReleased={selected.status === "RELEASED"}
-                          onEdit={() => openEditModal(c)} onDelete={() => deleteClause(c.id)} onConfirm={() => {/* per-item confirm is baseline-level */}} />
+                          reviewStatus={clauseReview[c.id]}
+                          onEdit={() => openEditModal(c)} onDelete={() => deleteClause(c.id)}
+                          onAccept={() => acceptClause(c.id)} onReject={() => rejectClause(c.id)} />
                       ))}
                     </div>
                   </div>
@@ -431,7 +454,9 @@ export default function BaselinePage() {
               <div className="space-y-2">
                 {filtered.map((c, i) => (
                   <TruthItemCard key={c.id} clause={c} index={i} programId={programId} isDraft={selected.status === "DRAFT"} isReleased={selected.status === "RELEASED"}
-                    onEdit={() => openEditModal(c)} onDelete={() => deleteClause(c.id)} onConfirm={() => {}} />
+                    reviewStatus={clauseReview[c.id]}
+                    onEdit={() => openEditModal(c)} onDelete={() => deleteClause(c.id)}
+                    onAccept={() => acceptClause(c.id)} onReject={() => rejectClause(c.id)} />
                 ))}
                 {filtered.length === 0 && <div className="card py-8 text-center"><p className="text-sm text-muted">No {activeTab.toLowerCase()} in this baseline.</p></div>}
               </div>
@@ -494,23 +519,33 @@ export default function BaselinePage() {
 
 /* ───── Truth Item Card with per-item actions ───── */
 
-function TruthItemCard({ clause, index, programId, isDraft, isReleased, onEdit, onDelete, onConfirm }: {
+function TruthItemCard({ clause, index, programId, isDraft, isReleased, reviewStatus, onEdit, onDelete, onAccept, onReject }: {
   clause: Clause; index: number; programId: string;
   isDraft: boolean; isReleased: boolean;
-  onEdit: () => void; onDelete: () => void; onConfirm: () => void;
+  reviewStatus?: "accepted" | "rejected";
+  onEdit: () => void; onDelete: () => void; onAccept: () => void; onReject: () => void;
 }) {
   const category = getCategory(clause.type);
+  const isAccepted = reviewStatus === "accepted";
+
+  const borderClass = isAccepted ? "border-green-300 bg-green-50/30" : "";
 
   return (
-    <div className="card card-hover flex items-start gap-4">
+    <div className={`card card-hover flex items-start gap-4 ${borderClass}`}>
       <span className="mt-0.5 flex-shrink-0 font-mono text-xs font-semibold text-muted">
         #{clause.clauseRef ?? `t${index + 1}`}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
-            Proposed
-          </span>
+          {isAccepted ? (
+            <span className="inline-flex rounded-md border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-green-700">
+              Accepted
+            </span>
+          ) : (
+            <span className="inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
+              Proposed
+            </span>
+          )}
           <StatusBadge status={clause.type} />
           {isReleased && (
             <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">Waiting for CDMO</span>
@@ -536,17 +571,19 @@ function TruthItemCard({ clause, index, programId, isDraft, isReleased, onEdit, 
       {/* Per-item action buttons */}
       {isDraft && (
         <div className="flex flex-shrink-0 items-center gap-1">
-          <button onClick={onEdit} title="Edit"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          <button onClick={onAccept} title={isAccepted ? "Undo accept" : "Accept"}
+            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+              isAccepted ? "bg-green-100 text-green-600" : "text-zinc-400 hover:bg-green-50 hover:text-green-600"
+            }`}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
           </button>
-          <button onClick={onDelete} title="Remove"
+          <button onClick={onReject} title="Reject (remove)"
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-50 hover:text-red-600">
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
-          <button onClick={onConfirm} title="Confirm"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-green-50 hover:text-green-600">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+          <button onClick={onEdit} title="Edit"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
           </button>
         </div>
       )}
