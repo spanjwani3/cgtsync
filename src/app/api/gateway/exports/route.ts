@@ -53,12 +53,13 @@ export async function POST(req: NextRequest) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (msg === "NOT_FOUND") return NextResponse.json({ error: "Program not found" }, { status: 404 });
     // Surface actionable infra errors (missing env vars, bucket issues)
     if (msg.startsWith("Missing ") || msg.includes("Bucket") || msg.includes("Storage")) {
       return NextResponse.json({ error: msg }, { status: 500 });
     }
     console.error("Export generation error:", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: msg || "Internal server error" }, { status: 500 });
   }
 }
 

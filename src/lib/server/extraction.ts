@@ -315,8 +315,17 @@ function extractJsonFromText(raw: string): unknown {
   try {
     return JSON.parse(trimmed);
   } catch {
+    // Try extracting from complete markdown code fences
     const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
+
+    // Handle truncated responses where closing ``` is missing
+    const openFence = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*)$/);
+    if (openFence) {
+      const inner = openFence[1].replace(/\n?```\s*$/, "").trim();
+      return JSON.parse(inner);
+    }
+
     throw new Error(`Not valid JSON: ${trimmed.slice(0, 200)}`);
   }
 }
