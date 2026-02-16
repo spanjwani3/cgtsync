@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
+import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
+import ExtractionProgress from "@/components/ui/ExtractionProgress";
 
 interface Change {
   id: string;
@@ -40,7 +42,20 @@ export default function ChangesPage() {
     scheduleImpact: "",
   });
 
+  const fileRef = useRef<HTMLInputElement>(null);
+
   useSyncProgram();
+
+  const loadChangesRef = useRef<() => Promise<void>>(undefined);
+
+  const extraction = useExtractionPipeline({
+    programId,
+    evidenceType: "CHANGE_ORDER",
+    targetType: "CHANGE_ORDER",
+    prepareApplyBody: async () => ({}),
+    onSuccess: async () => { await loadChangesRef.current?.(); },
+    onError: (msg) => setError(msg),
+  });
 
   const loadChanges = useCallback(async () => {
     const [changesRes, programRes] = await Promise.all([
@@ -55,6 +70,7 @@ export default function ChangesPage() {
     }
     setLoading(false);
   }, [programId]);
+  loadChangesRef.current = loadChanges;
 
   useEffect(() => { loadChanges(); }, [loadChanges]);
 
@@ -128,10 +144,17 @@ export default function ChangesPage() {
           <h1 className="mt-0.5 text-2xl font-bold text-zinc-900">Change Ledger</h1>
           <p className="mt-1 text-sm text-muted">One-Way Valve: changes are logged and confirmed</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary">
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          Draft Change
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+            Upload Change Order
+          </button>
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) extraction.run(f); e.target.value = ""; }} />
+          <button onClick={() => setShowNew(true)} className="btn-secondary">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Draft Change
+          </button>
+        </div>
       </div>
 
       {/* Friction threshold banner */}
@@ -147,6 +170,9 @@ export default function ChangesPage() {
       )}
 
       {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {/* Extraction progress */}
+      <ExtractionProgress status={extraction.status} progress={extraction.progress} error={extraction.error} onDismissError={extraction.reset} />
 
       {/* New change form */}
       {showNew && (
@@ -241,7 +267,11 @@ export default function ChangesPage() {
               <svg className="h-6 w-6 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 01-9 9" /></svg>
             </div>
             <p className="mt-3 font-medium text-zinc-900">No changes recorded yet</p>
-            <p className="mt-1 text-sm text-muted">Draft a change event to begin tracking scope changes</p>
+            <p className="mt-1 text-sm text-muted">Upload a change order document or draft one manually</p>
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">Upload Change Order</button>
+              <button onClick={() => setShowNew(true)} className="btn-secondary">Draft Manually</button>
+            </div>
           </div>
         )}
       </div>

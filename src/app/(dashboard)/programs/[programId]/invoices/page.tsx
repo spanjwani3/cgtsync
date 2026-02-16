@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
+import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
+import ExtractionProgress from "@/components/ui/ExtractionProgress";
 
 interface Invoice {
   id: string;
@@ -34,13 +36,45 @@ export default function InvoicesPage() {
   });
   const [file, setFile] = useState<File | null>(null);
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const createdInvoiceIdRef = useRef<string | null>(null);
+  const router = useRouter();
+
   useSyncProgram();
+
+  const loadInvoicesRef = useRef<() => Promise<void>>(undefined);
+
+  const extraction = useExtractionPipeline({
+    programId,
+    evidenceType: "INVOICE",
+    targetType: "INVOICE",
+    prepareApplyBody: async (_jobId, _extractedData) => {
+      // Create an empty invoice to receive the extracted data
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ programId }),
+      });
+      if (!res.ok) throw { step: "applying", message: "Failed to create invoice" };
+      const invoice = await res.json();
+      createdInvoiceIdRef.current = invoice.id;
+      return { invoiceId: invoice.id };
+    },
+    onSuccess: async () => {
+      await loadInvoicesRef.current?.();
+      if (createdInvoiceIdRef.current) {
+        router.push(`/programs/${programId}/invoices/${createdInvoiceIdRef.current}`);
+      }
+    },
+    onError: (msg) => setError(msg),
+  });
 
   const loadInvoices = useCallback(async () => {
     const res = await fetch(`/api/invoices?programId=${programId}`);
     if (res.ok) setInvoices(await res.json());
     setLoading(false);
   }, [programId]);
+  loadInvoicesRef.current = loadInvoices;
 
   useEffect(() => {
     loadInvoices();
@@ -121,13 +155,22 @@ export default function InvoicesPage() {
           <h1 className="mt-0.5 text-2xl font-bold text-zinc-900">Invoice Reconciliation</h1>
           <p className="mt-1 text-sm text-muted">Economic Defense: upload, map, flag, dispute</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary">
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-          Upload Invoice
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+            Upload Invoice
+          </button>
+          <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) extraction.run(f); e.target.value = ""; }} />
+          <button onClick={() => setShowNew(true)} className="btn-secondary">
+            Enter Manually
+          </button>
+        </div>
       </div>
 
       {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {/* Extraction progress */}
+      <ExtractionProgress status={extraction.status} progress={extraction.progress} error={extraction.error} onDismissError={extraction.reset} />
 
       {showNew && (
         <div className="mt-4 rounded-lg border border-card-border bg-card-bg p-4 space-y-3">
@@ -196,7 +239,11 @@ export default function InvoicesPage() {
               </tr>
             ))}
             {invoices.length === 0 && (
-              <tr><td colSpan={7} className="py-8 text-center text-sm text-zinc-400">No invoices uploaded yet</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center">
+                <p className="text-sm text-zinc-400">No invoices uploaded yet</p>
+                <p className="mt-1 text-xs text-zinc-400">Upload an invoice PDF to auto-extract line items, or enter details manually.</p>
+                <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary mt-3 disabled:opacity-50">Upload Invoice</button>
+              </td></tr>
             )}
           </tbody>
         </table>

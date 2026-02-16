@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
+import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
+import ExtractionProgress from "@/components/ui/ExtractionProgress";
 
 const TERM_TYPES = [
   "RESERVATION_FEE",
@@ -83,7 +84,20 @@ export default function TimelinePage() {
   const [formConditions, setFormConditions] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const fileRef = useRef<HTMLInputElement>(null);
+
   useSyncProgram();
+
+  const loadRef = useRef<() => Promise<void>>(undefined);
+
+  const extraction = useExtractionPipeline({
+    programId,
+    evidenceType: "SOW_MSA",
+    targetType: "TERMS",
+    prepareApplyBody: async () => ({}),
+    onSuccess: async () => { await loadRef.current?.(); },
+    onError: (msg) => setError(msg),
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,6 +112,7 @@ export default function TimelinePage() {
     }
     setLoading(false);
   }, [programId]);
+  loadRef.current = load;
 
   useEffect(() => {
     load();
@@ -182,8 +197,16 @@ export default function TimelinePage() {
             <span>days</span>
           </div>
           <button
+            onClick={() => fileRef.current?.click()}
+            disabled={extraction.status !== "idle"}
+            className="btn-primary disabled:opacity-50"
+          >
+            Extract from Contract
+          </button>
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) extraction.run(f); e.target.value = ""; }} />
+          <button
             onClick={() => setShowForm(!showForm)}
-            className="btn-primary"
+            className="btn-secondary"
           >
             {showForm ? "Cancel" : "Add Term"}
           </button>
@@ -191,6 +214,9 @@ export default function TimelinePage() {
       </div>
 
       {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {/* Extraction progress */}
+      <ExtractionProgress status={extraction.status} progress={extraction.progress} error={extraction.error} onDismissError={extraction.reset} />
 
       {/* Manual create form */}
       {showForm && (
@@ -338,12 +364,15 @@ export default function TimelinePage() {
         <div className="mt-8 text-center">
           <p className="text-sm text-zinc-400">No commitment terms yet.</p>
           <p className="mt-2 text-xs text-zinc-400">
-            Click &ldquo;Add Term&rdquo; to create one manually, or{" "}
-            <Link href={`/programs/${programId}/evidence`} className="text-blue-600 underline">
-              extract terms from evidence
-            </Link>{" "}
-            using AI.
+            Upload a SOW or MSA to extract terms automatically, or add them manually.
           </p>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={extraction.status !== "idle"}
+            className="btn-primary mt-3 disabled:opacity-50"
+          >
+            Extract from Contract
+          </button>
         </div>
       )}
     </div>

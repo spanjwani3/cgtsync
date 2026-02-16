@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
+import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
+import ExtractionProgress from "@/components/ui/ExtractionProgress";
 
 interface Clause {
   id: string;
@@ -59,12 +61,6 @@ export default function BaselinePage() {
   const [error, setError] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // Parse SOW state
-  const [showParseModal, setShowParseModal] = useState(false);
-  const [parseFile, setParseFile] = useState<File | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [parseStep, setParseStep] = useState<"upload" | "extracting" | "review">("upload");
-  const [parsedItems, setParsedItems] = useState<Array<{ type: string; title: string; description?: string; value?: number; unit?: string; clauseRef?: string; _accepted?: boolean; _rejected?: boolean }>>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Edit modal state
@@ -73,11 +69,46 @@ export default function BaselinePage() {
 
   useSyncProgram();
 
+  const loadBaselinesRef = useRef<() => Promise<void>>(undefined);
+  const loadBaselineRef = useRef<(id: string) => Promise<void>>(undefined);
+  const baselinesRef = useRef(baselines);
+  baselinesRef.current = baselines;
+
+  const extraction = useExtractionPipeline({
+    programId,
+    evidenceType: "SOW_MSA",
+    targetType: "BASELINE",
+    prepareApplyBody: async () => {
+      let draft = baselinesRef.current.find((b) => b.status === "DRAFT");
+      if (!draft) {
+        const maxV = baselinesRef.current.length > 0
+          ? Math.max(...baselinesRef.current.map((b) => b.version))
+          : 0;
+        const res = await fetch("/api/baselines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ programId, title: `SOW Extract v${maxV + 1}` }),
+        });
+        if (!res.ok) throw { step: "applying", message: "Failed to create draft baseline" };
+        draft = await res.json();
+      }
+      return { baselineId: draft!.id };
+    },
+    onSuccess: async () => {
+      await loadBaselinesRef.current?.();
+      const draft = baselinesRef.current.find((b) => b.status === "DRAFT");
+      if (draft) await loadBaselineRef.current?.(draft.id);
+    },
+    onError: (msg) => setError(msg),
+  });
+
   const loadBaselines = useCallback(async () => {
     const res = await fetch(`/api/baselines?programId=${programId}`);
     if (res.ok) setBaselines(await res.json());
     setLoading(false);
   }, [programId]);
+
+  loadBaselinesRef.current = loadBaselines;
 
   useEffect(() => { loadBaselines(); }, [loadBaselines]);
 
@@ -85,6 +116,7 @@ export default function BaselinePage() {
     const res = await fetch(`/api/baselines/${id}`);
     if (res.ok) setSelected(await res.json());
   }
+  loadBaselineRef.current = loadBaseline;
 
   async function createBaseline() {
     if (!newTitle) return;
@@ -165,89 +197,6 @@ export default function BaselinePage() {
       await navigator.clipboard.writeText(data.url);
       setShowConfirmModal(false);
       alert(`Magic link copied to clipboard!\n\n${data.url}\n\nExpires: ${new Date(data.expiresAt).toLocaleString()}`);
-    }
-  }
-
-  /* ───── Parse SOW flow ───── */
-
-  async function handleParseSOW() {
-    if (!selected || !parseFile) return;
-    setParsing(true);
-    setParseStep("extracting");
-    setError("");
-
-    try {
-      // Step 1: Upload to evidence
-      const form = new FormData();
-      form.append("file", parseFile);
-      form.append("programId", programId);
-      form.append("type", "SOW_MSA");
-      const uploadRes = await fetch("/api/gateway/evidence", { method: "POST", body: form });
-      if (!uploadRes.ok) throw new Error("Upload failed");
-      const evidence = await uploadRes.json();
-
-      // Step 2: Create extraction job
-      const jobRes = await fetch("/api/gateway/extraction", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ evidenceId: evidence.id, targetType: "BASELINE" }),
-      });
-      if (!jobRes.ok) throw new Error("Extraction job creation failed");
-      const job = await jobRes.json();
-
-      // Step 3: Run extraction
-      const runRes = await fetch(`/api/gateway/extraction/${job.id}/run`, { method: "POST" });
-      if (!runRes.ok) throw new Error("Extraction failed to run");
-      const result = await runRes.json();
-
-      // Step 4: Parse extracted items for review
-      const extracted = result.extractedData;
-      if (extracted?.clauses && Array.isArray(extracted.clauses)) {
-        setParsedItems(extracted.clauses.map((c: Record<string, unknown>) => ({ ...c, _accepted: false, _rejected: false })));
-      } else if (extracted?.items && Array.isArray(extracted.items)) {
-        setParsedItems(extracted.items.map((c: Record<string, unknown>) => ({ ...c, _accepted: false, _rejected: false })));
-      } else {
-        setParsedItems([]);
-      }
-      setParseStep("review");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Parse failed");
-      setParseStep("upload");
-    } finally {
-      setParsing(false);
-    }
-  }
-
-  async function acceptParsedItem(index: number) {
-    if (!selected) return;
-    const item = parsedItems[index];
-    const res = await fetch(`/api/baselines/${selected.id}/clauses`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: item.type || "SCOPE",
-        title: item.title,
-        description: item.description || undefined,
-        value: item.value || undefined,
-        unit: item.unit || undefined,
-        clauseRef: item.clauseRef || undefined,
-      }),
-    });
-    if (res.ok) {
-      setParsedItems((prev) => prev.map((p, i) => i === index ? { ...p, _accepted: true } : p));
-      await loadBaseline(selected.id);
-    }
-  }
-
-  function rejectParsedItem(index: number) {
-    setParsedItems((prev) => prev.map((p, i) => i === index ? { ...p, _rejected: true } : p));
-  }
-
-  async function acceptAllRemaining() {
-    for (let i = 0; i < parsedItems.length; i++) {
-      if (!parsedItems[i]._accepted && !parsedItems[i]._rejected) {
-        await acceptParsedItem(i);
-      }
     }
   }
 
@@ -417,13 +366,17 @@ export default function BaselinePage() {
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                     Add Item
                   </button>
-                  <button onClick={() => { setShowParseModal(true); setParseStep("upload"); setParseFile(null); setParsedItems([]); }} className="btn-primary">
+                  <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
                     Parse SOW
                   </button>
+                  <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) extraction.run(f); e.target.value = ""; }} />
                 </>
               )}
             </div>
+
+            {/* Extraction progress */}
+            <ExtractionProgress status={extraction.status} progress={extraction.progress} error={extraction.error} onDismissError={extraction.reset} />
 
             {/* Add clause form */}
             {showAddClause && selected.status === "DRAFT" && (
@@ -470,7 +423,7 @@ export default function BaselinePage() {
                     <svg className="h-10 w-10 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                     <p className="mt-3 font-medium text-zinc-900">No truth items yet</p>
                     <p className="mt-1 text-sm text-muted">Upload a SOW/WO to auto-parse, or add items manually</p>
-                    <button onClick={() => { setShowParseModal(true); setParseStep("upload"); }} className="btn-primary mt-4">Parse SOW</button>
+                    <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary mt-4 disabled:opacity-50">Parse SOW</button>
                   </div>
                 )}
               </div>
@@ -494,105 +447,6 @@ export default function BaselinePage() {
           </div>
         )}
       </div>
-
-      {/* ═══════ Parse SOW modal ═══════ */}
-      {showParseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !parsing && setShowParseModal(false)}>
-          <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-            {/* Modal header */}
-            <div className="flex items-center justify-between border-b border-card-border px-6 py-4">
-              <h3 className="text-lg font-semibold text-zinc-900">Parse SOW / Work Order</h3>
-              {!parsing && (
-                <button onClick={() => setShowParseModal(false)} className="text-muted hover:text-zinc-900">
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                </button>
-              )}
-            </div>
-
-            <div className="p-6">
-              {/* Step: Upload */}
-              {parseStep === "upload" && (
-                <div>
-                  <p className="text-sm text-muted">Upload a SOW, MSA, or Work Order document. CGT-Sync will extract Deliverables, Assumptions, and Exclusions for your review.</p>
-                  <div
-                    className="mt-4 flex cursor-pointer flex-col items-center rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-8 transition-colors hover:border-accent hover:bg-accent-light/10"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <svg className="h-10 w-10 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                    <p className="mt-3 text-sm font-medium text-zinc-700">{parseFile ? parseFile.name : "Click to select a file"}</p>
-                    <p className="mt-1 text-xs text-muted">PDF, Word, or text files supported</p>
-                    <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => setParseFile(e.target.files?.[0] ?? null)} />
-                  </div>
-                  <div className="mt-6 flex justify-end gap-2">
-                    <button onClick={() => setShowParseModal(false)} className="btn-secondary">Cancel</button>
-                    <button onClick={handleParseSOW} disabled={!parseFile} className="btn-primary disabled:opacity-50">
-                      Parse Document
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Step: Extracting */}
-              {parseStep === "extracting" && (
-                <div className="flex flex-col items-center py-8">
-                  <svg className="h-8 w-8 animate-spin text-accent" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  <p className="mt-4 font-medium text-zinc-900">Parsing document...</p>
-                  <p className="mt-1 text-sm text-muted">AI is extracting Deliverables, Assumptions, and Exclusions</p>
-                </div>
-              )}
-
-              {/* Step: Review parsed items */}
-              {parseStep === "review" && (
-                <div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted">
-                      Extracted <span className="font-semibold text-zinc-900">{parsedItems.length}</span> items. Review each one — accept, edit, or reject.
-                    </p>
-                    <button onClick={acceptAllRemaining} className="text-xs font-medium text-accent hover:text-accent-text">Accept All Remaining</button>
-                  </div>
-                  <div className="mt-4 max-h-96 space-y-2 overflow-y-auto">
-                    {parsedItems.map((item, idx) => (
-                      <div key={idx} className={`rounded-lg border p-3 ${item._accepted ? "border-green-200 bg-green-50/50" : item._rejected ? "border-red-200 bg-red-50/50 opacity-50" : "border-card-border bg-card-bg"}`}>
-                        <div className="flex items-start justify-between">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-600">{getCategory(item.type)}</span>
-                              <StatusBadge status={item.type} />
-                              {item._accepted && <span className="rounded-md bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">ACCEPTED</span>}
-                              {item._rejected && <span className="rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">REJECTED</span>}
-                            </div>
-                            <p className="mt-1 text-sm font-medium text-zinc-900">{item.title}</p>
-                            {item.description && <p className="mt-0.5 text-xs text-muted">{item.description}</p>}
-                            {item.value && <p className="mt-1 text-xs text-zinc-500">{Number(item.value).toLocaleString()} {item.unit ?? ""}</p>}
-                          </div>
-                          {!item._accepted && !item._rejected && (
-                            <div className="ml-3 flex flex-shrink-0 items-center gap-1">
-                              <button onClick={() => acceptParsedItem(idx)} title="Accept"
-                                className="flex h-7 w-7 items-center justify-center rounded-md bg-green-50 text-green-600 hover:bg-green-100">
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
-                              </button>
-                              <button onClick={() => rejectParsedItem(idx)} title="Reject"
-                                className="flex h-7 w-7 items-center justify-center rounded-md bg-red-50 text-red-600 hover:bg-red-100">
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {parsedItems.length === 0 && (
-                      <div className="py-8 text-center text-sm text-muted">No items were extracted. Try a different document.</div>
-                    )}
-                  </div>
-                  <div className="mt-6 flex justify-end gap-2">
-                    <button onClick={() => setShowParseModal(false)} className="btn-primary">Done</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ═══════ Edit clause modal ═══════ */}
       {editingClause && (
