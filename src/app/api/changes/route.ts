@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { programId, baselineId, title, description, severity, estimatedImpact } = body;
+    const { programId, baselineId, title, description, severity, estimatedImpact, reasonCode, scheduleImpactDays } = body;
     if (!programId || !title) return NextResponse.json({ error: "programId and title required" }, { status: 400 });
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
     const maxSeq = await prisma.change.aggregate({ where: { programId }, _max: { sequenceNum: true } });
@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
         programId, baselineId: baselineId ?? null, sequenceNum, title,
         description: description ?? null, severity: severity ?? "MEDIUM",
         estimatedImpact: estimatedImpact ?? null,
+        reasonCode: reasonCode ?? null,
+        scheduleImpactDays: scheduleImpactDays != null ? parseInt(String(scheduleImpactDays)) : null,
       },
     });
     await logEvent({

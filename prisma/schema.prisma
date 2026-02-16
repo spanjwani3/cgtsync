@@ -54,6 +54,19 @@ enum ChangeSeverity {
   CRITICAL
 }
 
+enum ChangeReasonCode {
+  SPONSOR_REQUEST
+  VENDOR_ERROR
+  MATERIAL_DELAY
+  REGULATORY_REQUIREMENT
+  OTHER
+}
+
+enum ConfirmationMode {
+  BILATERAL
+  SHADOW
+}
+
 enum InvoiceStatus {
   UPLOADED
   MAPPED
@@ -158,6 +171,8 @@ enum ExtractionTargetType {
   BASELINE
   INVOICE
   CHANGE_ORDER
+  CHANGE_TRANSCRIPT
+  CHANGE_EMAIL
   TERMS
 }
 
@@ -300,9 +315,12 @@ model Change {
   description     String?
   severity        ChangeSeverity @default(MEDIUM)
   status          ChangeStatus   @default(DRAFT)
-  estimatedImpact Decimal?       @map("estimated_impact") @db.Decimal(14, 2)
-  evidenceFileId  String?        @map("evidence_file_id") @db.Uuid
-  releasedAt      DateTime?      @map("released_at")
+  estimatedImpact    Decimal?          @map("estimated_impact") @db.Decimal(14, 2)
+  reasonCode         ChangeReasonCode? @map("reason_code")
+  scheduleImpactDays Int?              @map("schedule_impact_days")
+  confirmationMode   ConfirmationMode? @map("confirmation_mode")
+  evidenceFileId     String?           @map("evidence_file_id") @db.Uuid
+  releasedAt         DateTime?         @map("released_at")
   confirmedAt     DateTime?      @map("confirmed_at")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")

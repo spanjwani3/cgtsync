@@ -213,6 +213,120 @@ export async function POST(
         ipAddress: getClientIp(req.headers),
       });
       createdCount = 1;
+    } else if (job.targetType === "CHANGE_TRANSCRIPT") {
+      // Multi-candidate: user selects which candidates to create
+      const candidates = data.candidates as Array<{
+        changeTitle?: string;
+        description?: string;
+        severity?: string;
+        estimatedImpact?: number;
+        scheduleImpactDays?: number;
+        speaker?: string;
+      }>;
+      if (!Array.isArray(candidates) || candidates.length === 0) {
+        return NextResponse.json(
+          { requestId, error: "No candidates found in extracted data" },
+          { status: 400 }
+        );
+      }
+
+      const selectedIndices: number[] = body.selectedIndices ?? candidates.map((_: unknown, i: number) => i);
+      const selected = selectedIndices
+        .filter((i: number) => i >= 0 && i < candidates.length)
+        .map((i: number) => candidates[i]);
+
+      if (selected.length === 0) {
+        return NextResponse.json(
+          { requestId, error: "No candidates selected" },
+          { status: 400 }
+        );
+      }
+
+      const maxSeq = await prisma.change.aggregate({
+        where: { programId },
+        _max: { sequenceNum: true },
+      });
+      let sequenceNum = (maxSeq._max.sequenceNum ?? 0) + 1;
+
+      for (const c of selected) {
+        if (!c.changeTitle) continue;
+        const severity = VALID_SEVERITIES.has(c.severity as ChangeSeverity)
+          ? (c.severity as ChangeSeverity)
+          : "MEDIUM";
+
+        const change = await prisma.change.create({
+          data: {
+            programId,
+            sequenceNum: sequenceNum++,
+            title: c.changeTitle,
+            description: c.description ?? (c.speaker ? `Proposed by ${c.speaker}` : null),
+            severity,
+            estimatedImpact: c.estimatedImpact != null ? Number(c.estimatedImpact) : null,
+            scheduleImpactDays: c.scheduleImpactDays ?? null,
+            evidenceFileId: job.evidenceId,
+          },
+        });
+
+        await logEvent({
+          programId,
+          userId,
+          action: "CHANGE_DRAFTED",
+          entityType: "Change",
+          entityId: change.id,
+          metadata: { sequenceNum: change.sequenceNum, title: c.changeTitle, fromExtraction: true, jobId, source: "transcript" },
+          ipAddress: getClientIp(req.headers),
+        });
+        createdCount++;
+      }
+    } else if (job.targetType === "CHANGE_EMAIL") {
+      const changeTitle = data.changeTitle as string | undefined;
+      if (!changeTitle) {
+        return NextResponse.json(
+          { requestId, error: "No change title found in extracted email" },
+          { status: 400 }
+        );
+      }
+
+      const severity = VALID_SEVERITIES.has(data.severity as ChangeSeverity)
+        ? (data.severity as ChangeSeverity)
+        : "MEDIUM";
+
+      const maxSeq = await prisma.change.aggregate({
+        where: { programId },
+        _max: { sequenceNum: true },
+      });
+      const sequenceNum = (maxSeq._max.sequenceNum ?? 0) + 1;
+
+      // Build description with email context
+      const parts: string[] = [];
+      if (data.sender) parts.push(`From: ${data.sender}${data.senderRole ? ` (${data.senderRole})` : ""}`);
+      if (data.dateSent) parts.push(`Date: ${data.dateSent}`);
+      if (data.description) parts.push(String(data.description));
+      const description = parts.join("\n") || null;
+
+      const change = await prisma.change.create({
+        data: {
+          programId,
+          sequenceNum,
+          title: changeTitle,
+          description,
+          severity,
+          estimatedImpact: data.estimatedImpact != null ? Number(data.estimatedImpact) : null,
+          scheduleImpactDays: data.scheduleImpactDays != null ? Number(data.scheduleImpactDays) : null,
+          evidenceFileId: job.evidenceId,
+        },
+      });
+
+      await logEvent({
+        programId,
+        userId,
+        action: "CHANGE_DRAFTED",
+        entityType: "Change",
+        entityId: change.id,
+        metadata: { sequenceNum, title: changeTitle, fromExtraction: true, jobId, source: "email" },
+        ipAddress: getClientIp(req.headers),
+      });
+      createdCount = 1;
     } else if (job.targetType === "TERMS") {
       const terms = data.terms as Array<{
         termType?: string;

@@ -37,7 +37,22 @@ const statusColors: Record<string, string> = {
   CHANGE_ORDER: "bg-amber-50 text-amber-600",
 };
 
-export default function StatusBadge({ status }: { status: string }) {
+export default function StatusBadge({
+  status,
+  confirmationMode,
+}: {
+  status: string;
+  confirmationMode?: string | null;
+}) {
+  // Shadow confirmation: distinct dashed-border style
+  if (status === "CONFIRMED" && confirmationMode === "SHADOW") {
+    return (
+      <span className="inline-flex rounded-full border border-dashed border-green-400 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+        Confirmed (Shadow)
+      </span>
+    );
+  }
+
   const colors = statusColors[status] ?? "bg-zinc-100 text-zinc-600";
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors}`}>

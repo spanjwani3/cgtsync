@@ -132,6 +132,51 @@ export const TermsExtractionSchema = z.object({
   summary: z.string().nullable().optional(),
 });
 
+// ─── Transcript extraction: multi-candidate scope changes ────
+
+const CandidateChangeRow = z.object({
+  changeTitle: z.string().min(1),
+  description: z.string().nullable().optional(),
+  severity: z.enum(SEVERITIES).catch("MEDIUM"),
+  estimatedImpact: z.number().nullable().optional(),
+  scheduleImpactDays: z.number().int().nullable().optional(),
+  speaker: z.string().nullable().optional(),
+  excerpt: z.string().min(1),
+  page: z.number().int().positive().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+export const TranscriptExtractionSchema = z.object({
+  meetingTitle: z.string().nullable().optional(),
+  meetingDate: z.string().nullable().optional(),
+  participants: z.array(z.string()).optional().default([]),
+  candidates: z.array(CandidateChangeRow).min(1),
+  summary: z.string().nullable().optional(),
+});
+
+export type TranscriptExtraction = z.infer<typeof TranscriptExtractionSchema>;
+
+// ─── Email extraction: single change from email thread ───────
+
+export const EmailExtractionSchema = z.object({
+  sender: z.string().nullable().optional(),
+  senderRole: z.string().nullable().optional(),
+  dateSent: z.string().nullable().optional(),
+  subject: z.string().nullable().optional(),
+  changeTitle: z.string().min(1),
+  description: z.string().nullable().optional(),
+  severity: z.enum(SEVERITIES).catch("MEDIUM"),
+  estimatedImpact: z.number().nullable().optional(),
+  scheduleImpactDays: z.number().int().nullable().optional(),
+  proposedBy: z.string().nullable().optional(),
+  summary: z.string().nullable().optional(),
+  excerpt: z.string().min(1),
+  page: z.number().int().positive().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+export type EmailExtraction = z.infer<typeof EmailExtractionSchema>;
+
 export type BaselineExtraction = z.infer<typeof BaselineExtractionSchema>;
 export type InvoiceExtraction = z.infer<typeof InvoiceExtractionSchema>;
 export type ChangeOrderExtraction = z.infer<typeof ChangeOrderExtractionSchema>;
@@ -142,6 +187,8 @@ function getSchemaForTarget(targetType: ExtractionTargetType): z.ZodTypeAny {
     case "BASELINE": return BaselineExtractionSchema;
     case "INVOICE": return InvoiceExtractionSchema;
     case "CHANGE_ORDER": return ChangeOrderExtractionSchema;
+    case "CHANGE_TRANSCRIPT": return TranscriptExtractionSchema;
+    case "CHANGE_EMAIL": return EmailExtractionSchema;
     case "TERMS": return TermsExtractionSchema;
   }
 }
@@ -288,11 +335,83 @@ Return a JSON object with this exact structure:
 
 Extract ALL identifiable commitment terms, deadlines, and financial obligations. Be thorough. Return ONLY valid JSON, no markdown fences.`;
 
+const CHANGE_TRANSCRIPT_PROMPT = `You are an expert at analyzing meeting transcripts and notes for biopharma outsourcing programs. Your job is to find ALL potential scope changes, cost impacts, and action items that could affect the contract.
+
+Scan the transcript for phrases like:
+- "action item", "agreed to", "we decided", "let's add", "need to change"
+- Cost mentions: dollar amounts, budget discussions, "additional cost", "extra charge"
+- Schedule impacts: "delay", "push back", "ahead of schedule", "extra days/weeks"
+- Risk items: "risk", "concern", "issue", "problem"
+- Scope changes: "out of scope", "scope creep", "additional work", "not in the SOW"
+
+For EACH potential change, extract:
+- changeTitle: Brief title (e.g., "Add nitrogen overlay system to bioreactor")
+- description: What was discussed/agreed
+- severity: LOW (minor), MEDIUM (moderate impact), HIGH (significant), CRITICAL (project-threatening)
+- estimatedImpact: Dollar amount if mentioned, or null
+- scheduleImpactDays: Number of days impact if mentioned, or null
+- speaker: Who proposed or mentioned this change (name if available)
+${PROVENANCE_INSTRUCTION}
+
+Return a JSON object with this exact structure:
+{
+  "meetingTitle": "Meeting title if mentioned, or null",
+  "meetingDate": "YYYY-MM-DD or null",
+  "participants": ["Name 1", "Name 2"],
+  "candidates": [
+    {
+      "changeTitle": "Add nitrogen overlay system",
+      "description": "Team agreed to add nitrogen overlay...",
+      "severity": "MEDIUM",
+      "estimatedImpact": 45000,
+      "scheduleImpactDays": 5,
+      "speaker": "J. Smith",
+      "excerpt": "verbatim quote from transcript...",
+      "page": null,
+      "confidence": 0.85
+    }
+  ],
+  "summary": "Brief summary of meeting scope change discussions"
+}
+
+Be thorough — extract ALL potential scope changes, even uncertain ones. Use lower confidence (0.3-0.5) for items that are uncertain or just mentioned in passing. Return ONLY valid JSON, no markdown fences.`;
+
+const CHANGE_EMAIL_PROMPT = `You are an expert at analyzing email threads for biopharma outsourcing programs. Extract the scope change or cost impact being proposed or discussed in this email.
+
+Look for:
+- Proposed cost changes: "additional charge", "revised quote", "cost increase"
+- Schedule changes: "delay", "timeline change", "new date"
+- Scope modifications: "additional work", "change request", "amendment"
+- Agreements or approvals: "approved", "confirmed", "agreed"
+${PROVENANCE_INSTRUCTION}
+
+Return a JSON object with this exact structure:
+{
+  "sender": "Name of the email sender or null",
+  "senderRole": "Role/company of sender or null",
+  "dateSent": "YYYY-MM-DD or null",
+  "subject": "Email subject line or null",
+  "changeTitle": "Brief title of the proposed change",
+  "description": "Full description of what is being proposed/changed",
+  "severity": "LOW, MEDIUM, HIGH, or CRITICAL",
+  "estimatedImpact": 5000.00,
+  "scheduleImpactDays": 3,
+  "proposedBy": "Who is proposing this change",
+  "summary": "Brief 1-2 sentence summary",
+  "excerpt": "verbatim quote from email...",
+  "page": 1,
+  "confidence": 0.85
+}
+
+Return ONLY valid JSON, no markdown fences.`;
+
 function getPromptForTarget(targetType: ExtractionTargetType): string {
   switch (targetType) {
     case "BASELINE": return BASELINE_PROMPT;
     case "INVOICE": return INVOICE_PROMPT;
     case "CHANGE_ORDER": return CHANGE_ORDER_PROMPT;
+    case "CHANGE_TRANSCRIPT": return CHANGE_TRANSCRIPT_PROMPT;
+    case "CHANGE_EMAIL": return CHANGE_EMAIL_PROMPT;
     case "TERMS": return TERMS_PROMPT;
   }
 }
@@ -431,7 +550,7 @@ function normalizeProvenance(data: Record<string, unknown>, evidenceId: string):
   const result: Record<string, unknown> = { ...data, evidenceId };
 
   // Normalize excerpts in arrays
-  const arrayKeys = ["clauses", "lineItems", "affectedClauses", "terms"];
+  const arrayKeys = ["clauses", "lineItems", "affectedClauses", "terms", "candidates"];
   for (const key of arrayKeys) {
     const arr = result[key];
     if (Array.isArray(arr)) {
@@ -515,6 +634,21 @@ function estimateConfidence(data: Record<string, unknown>, targetType: Extractio
       if (data.changeTitle) score += 0.15;
       if (data.description) score += 0.15;
       if (data.severity) score += 0.1;
+      if (data.estimatedImpact !== null && data.estimatedImpact !== undefined) score += 0.1;
+      break;
+    }
+    case "CHANGE_TRANSCRIPT": {
+      const candidates = data.candidates as unknown[];
+      if (Array.isArray(candidates) && candidates.length > 0) score += 0.2;
+      if (data.meetingTitle) score += 0.1;
+      if (data.participants && Array.isArray(data.participants) && (data.participants as unknown[]).length > 0) score += 0.1;
+      if (data.summary) score += 0.1;
+      break;
+    }
+    case "CHANGE_EMAIL": {
+      if (data.changeTitle) score += 0.15;
+      if (data.sender) score += 0.1;
+      if (data.description) score += 0.15;
       if (data.estimatedImpact !== null && data.estimatedImpact !== undefined) score += 0.1;
       break;
     }

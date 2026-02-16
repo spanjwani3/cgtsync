@@ -35,9 +35,31 @@ export async function PATCH(
     if (!change) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const auth = await requireProgramAccess(change.programId, OrgRole.OPERATOR);
     const body = await req.json();
-    const { status, evidenceFileId } = body;
+    const { status, evidenceFileId, reasonCode, scheduleImpactDays, confirmationMode, shadowEvidenceId } = body;
     const data: Record<string, unknown> = {};
     if (evidenceFileId) data.evidenceFileId = evidenceFileId;
+    if (reasonCode !== undefined) data.reasonCode = reasonCode;
+    if (scheduleImpactDays !== undefined) data.scheduleImpactDays = scheduleImpactDays != null ? parseInt(String(scheduleImpactDays)) : null;
+
+    // Shadow confirmation: user uploads evidence of CDMO agreement
+    if (confirmationMode === "SHADOW" && shadowEvidenceId) {
+      const evidence = await prisma.evidence.findUnique({ where: { id: shadowEvidenceId } });
+      if (!evidence || evidence.programId !== change.programId) {
+        return NextResponse.json({ error: "Evidence not found or does not belong to this program" }, { status: 400 });
+      }
+      data.confirmationMode = "SHADOW";
+      data.evidenceFileId = shadowEvidenceId;
+      data.status = "CONFIRMED";
+      data.confirmedAt = new Date();
+      const updated = await prisma.change.update({ where: { id: changeId }, data });
+      await logEvent({
+        programId: change.programId, userId: auth.userId, action: EventAction.CHANGE_CONFIRMED,
+        entityType: "Change", entityId: changeId,
+        metadata: { confirmationMode: "SHADOW", evidenceId: shadowEvidenceId },
+        ipAddress: getClientIp(req.headers),
+      });
+      return NextResponse.json(updated);
+    }
 
     if (status) {
       const transitions: Record<string, string[]> = {

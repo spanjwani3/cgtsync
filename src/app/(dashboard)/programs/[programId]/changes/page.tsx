@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
-import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
-import ExtractionProgress from "@/components/ui/ExtractionProgress";
+import IngestionModal from "@/components/changes/IngestionModal";
+import ImpactCard from "@/components/changes/ImpactCard";
+import ShadowConfirmModal from "@/components/changes/ShadowConfirmModal";
 
 interface Change {
   id: string;
@@ -15,6 +16,9 @@ interface Change {
   severity: string;
   status: string;
   estimatedImpact: string | null;
+  reasonCode: string | null;
+  scheduleImpactDays: number | null;
+  confirmationMode: string | null;
   releasedAt: string | null;
   confirmedAt: string | null;
   createdAt: string;
@@ -26,13 +30,23 @@ interface ProgramInfo {
   currency: string;
 }
 
+const REASON_LABELS: Record<string, string> = {
+  SPONSOR_REQUEST: "Sponsor Request",
+  VENDOR_ERROR: "Vendor Error",
+  MATERIAL_DELAY: "Material Delay",
+  REGULATORY_REQUIREMENT: "Regulatory Requirement",
+  OTHER: "Other",
+};
+
 export default function ChangesPage() {
   const { programId } = useParams<{ programId: string }>();
   const [changes, setChanges] = useState<Change[]>([]);
   const [programInfo, setProgramInfo] = useState<ProgramInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showIngestion, setShowIngestion] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [selectedChange, setSelectedChange] = useState<Change | null>(null);
+  const [shadowTarget, setShadowTarget] = useState<Change | null>(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     title: "",
@@ -40,22 +54,15 @@ export default function ChangesPage() {
     severity: "MEDIUM",
     estimatedImpact: "",
     scheduleImpact: "",
+    reasonCode: "",
   });
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  // Reason code gate: when user clicks Release on a draft missing reasonCode
+  const [releaseGate, setReleaseGate] = useState<{ changeId: string; reasonCode: string; scheduleImpactDays: string } | null>(null);
+
+  const impactKeyRef = useRef(0);
 
   useSyncProgram();
-
-  const loadChangesRef = useRef<() => Promise<void>>(undefined);
-
-  const extraction = useExtractionPipeline({
-    programId,
-    evidenceType: "CHANGE_ORDER",
-    targetType: "CHANGE_ORDER",
-    prepareApplyBody: async () => ({}),
-    onSuccess: async () => { await loadChangesRef.current?.(); },
-    onError: (msg) => setError(msg),
-  });
 
   const loadChanges = useCallback(async () => {
     const [changesRes, programRes] = await Promise.all([
@@ -70,9 +77,13 @@ export default function ChangesPage() {
     }
     setLoading(false);
   }, [programId]);
-  loadChangesRef.current = loadChanges;
 
   useEffect(() => { loadChanges(); }, [loadChanges]);
+
+  function refreshAll() {
+    loadChanges();
+    impactKeyRef.current += 1;
+  }
 
   async function createChange() {
     if (!form.title) return;
@@ -86,15 +97,65 @@ export default function ChangesPage() {
         description: form.description || undefined,
         severity: form.severity,
         estimatedImpact: form.estimatedImpact ? parseFloat(form.estimatedImpact) : undefined,
+        scheduleImpactDays: form.scheduleImpact ? parseInt(form.scheduleImpact) : undefined,
+        reasonCode: form.reasonCode || undefined,
       }),
     });
     if (res.ok) {
-      setForm({ title: "", description: "", severity: "MEDIUM", estimatedImpact: "", scheduleImpact: "" });
+      setForm({ title: "", description: "", severity: "MEDIUM", estimatedImpact: "", scheduleImpact: "", reasonCode: "" });
       setShowNew(false);
-      await loadChanges();
+      refreshAll();
     } else {
       const data = await res.json();
       setError(data.error || "Failed");
+    }
+  }
+
+  async function releaseChange(changeId: string) {
+    const change = changes.find((c) => c.id === changeId);
+    if (!change) return;
+
+    // Reason code gate: require reason code before releasing
+    if (!change.reasonCode) {
+      setReleaseGate({ changeId, reasonCode: "", scheduleImpactDays: change.scheduleImpactDays?.toString() ?? "" });
+      return;
+    }
+
+    await transitionChange(changeId, "RELEASED");
+  }
+
+  async function submitReleaseGate() {
+    if (!releaseGate || !releaseGate.reasonCode) return;
+    setError("");
+
+    // First PATCH reason code + schedule impact
+    const patchRes = await fetch(`/api/changes/${releaseGate.changeId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reasonCode: releaseGate.reasonCode,
+        scheduleImpactDays: releaseGate.scheduleImpactDays ? parseInt(releaseGate.scheduleImpactDays) : null,
+      }),
+    });
+    if (!patchRes.ok) {
+      const d = await patchRes.json().catch(() => ({}));
+      setError(d.error ?? "Failed to update reason code");
+      return;
+    }
+
+    // Then transition to RELEASED
+    const transRes = await fetch(`/api/changes/${releaseGate.changeId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "RELEASED" }),
+    });
+    if (transRes.ok) {
+      setReleaseGate(null);
+      refreshAll();
+      setSelectedChange(null);
+    } else {
+      const d = await transRes.json().catch(() => ({}));
+      setError(d.error ?? "Release failed");
     }
   }
 
@@ -104,8 +165,10 @@ export default function ChangesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    if (res.ok) { await loadChanges(); setSelectedChange(null); }
-    else {
+    if (res.ok) {
+      refreshAll();
+      setSelectedChange(null);
+    } else {
       const data = await res.json();
       setError(data.error || "Transition failed");
     }
@@ -144,17 +207,15 @@ export default function ChangesPage() {
           <h1 className="mt-0.5 text-2xl font-bold text-zinc-900">Change Ledger</h1>
           <p className="mt-1 text-sm text-muted">One-Way Valve: changes are logged and confirmed</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-            Upload Change Order
-          </button>
-          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) extraction.run(f); e.target.value = ""; }} />
-          <button onClick={() => setShowNew(true)} className="btn-secondary">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            Draft Change
-          </button>
-        </div>
+        <button onClick={() => setShowIngestion(true)} className="btn-primary">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          Log Change Event
+        </button>
+      </div>
+
+      {/* Impact card */}
+      <div className="mt-4">
+        <ImpactCard programId={programId} key={impactKeyRef.current} />
       </div>
 
       {/* Friction threshold banner */}
@@ -163,18 +224,15 @@ export default function ChangesPage() {
           <svg className="h-4 w-4 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
           <p className="text-sm text-amber-800">
             <span className="font-semibold">Friction Threshold:</span>{" "}
-            Changes under {programInfo?.currency} {threshold.toLocaleString()} are <span className="font-semibold">auto-logged</span>.
-            Changes above require bilateral confirmation.
+            Changes under {programInfo?.currency} {threshold.toLocaleString()} are <span className="font-semibold text-green-700">auto-logged</span>.
+            Changes above require <span className="font-semibold text-amber-700">bilateral confirmation</span>.
           </p>
         </div>
       )}
 
       {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-      {/* Extraction progress */}
-      <ExtractionProgress status={extraction.status} progress={extraction.progress} error={extraction.error} onDismissError={extraction.reset} />
-
-      {/* New change form */}
+      {/* Manual draft form */}
       {showNew && (
         <div className="mt-4 card space-y-3">
           <h3 className="text-sm font-semibold text-zinc-900">Draft New Change</h3>
@@ -195,6 +253,13 @@ export default function ChangesPage() {
               <label className="mb-1 block text-xs font-medium text-muted">Schedule Impact (days)</label>
               <input type="number" placeholder="e.g., 5" value={form.scheduleImpact} onChange={(e) => setForm({ ...form, scheduleImpact: e.target.value })} className="input" />
             </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Reason Code</label>
+              <select value={form.reasonCode} onChange={(e) => setForm({ ...form, reasonCode: e.target.value })} className="input">
+                <option value="">Select...</option>
+                {Object.entries(REASON_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex gap-2">
             <button onClick={createChange} className="btn-primary">Create Draft</button>
@@ -206,32 +271,41 @@ export default function ChangesPage() {
       {/* Change cards */}
       <div className="mt-6 space-y-3">
         {changes.map((c) => {
-          const isAutoLogged = threshold !== null && c.estimatedImpact && Number(c.estimatedImpact) < threshold;
+          const impact = c.estimatedImpact ? Number(c.estimatedImpact) : null;
+          const isAutoLogged = threshold !== null && impact !== null && impact < threshold;
+          const needsConfirmation = threshold !== null && impact !== null && impact >= threshold;
           return (
             <div key={c.id} className="card card-hover">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <StatusBadge status={c.status} />
+                  <StatusBadge status={c.status} confirmationMode={c.confirmationMode} />
                   <span className="font-mono text-xs text-muted">#{c.sequenceNum}</span>
-                  {isAutoLogged && (
-                    <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-500">Auto-logged</span>
+                  {c.status === "LOGGED" && isAutoLogged && (
+                    <span className="rounded-md bg-green-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-green-600">Auto-logged</span>
+                  )}
+                  {c.reasonCode && (
+                    <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                      {REASON_LABELS[c.reasonCode] ?? c.reasonCode}
+                    </span>
                   )}
                 </div>
                 <StatusBadge status={c.severity} />
               </div>
 
               <h3 className="mt-2 font-semibold text-zinc-900">{c.title}</h3>
-              {c.description && <p className="mt-1 text-sm text-muted">{c.description}</p>}
+              {c.description && <p className="mt-1 text-sm text-muted line-clamp-2">{c.description}</p>}
 
               <div className="mt-3 flex items-center gap-4">
-                {c.estimatedImpact && (
+                {impact !== null && (
                   <div className="flex items-center gap-1.5">
                     <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
-                    <span className={`text-sm font-semibold ${Number(c.estimatedImpact) > 0 ? "text-red-600" : "text-green-600"}`}>
-                      +${Number(c.estimatedImpact).toLocaleString()}
+                    <span className={`text-sm font-semibold ${impact > 0 ? "text-red-600" : "text-green-600"}`}>
+                      +${impact.toLocaleString()}
                     </span>
-                    <span className="text-xs text-muted">cost impact</span>
                   </div>
+                )}
+                {c.scheduleImpactDays != null && (
+                  <span className="text-xs text-zinc-500">+{c.scheduleImpactDays} days</span>
                 )}
                 <div className="text-xs text-muted">
                   {new Date(c.createdAt).toLocaleDateString()}
@@ -241,12 +315,28 @@ export default function ChangesPage() {
               {/* Actions */}
               <div className="mt-3 flex items-center gap-2 border-t border-card-border pt-3">
                 {c.status === "DRAFT" && (
-                  <button onClick={() => transitionChange(c.id, "RELEASED")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">Release</button>
+                  isAutoLogged ? (
+                    <button onClick={() => releaseChange(c.id)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">
+                      Auto-Log
+                    </button>
+                  ) : needsConfirmation ? (
+                    <button onClick={() => releaseChange(c.id)} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500">
+                      Request Confirmation
+                    </button>
+                  ) : (
+                    <button onClick={() => releaseChange(c.id)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+                      Release
+                    </button>
+                  )
                 )}
                 {c.status === "RELEASED" && (
                   <>
-                    <button onClick={() => transitionChange(c.id, "CONFIRMED")} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">Confirm</button>
-                    <button onClick={() => sendMagicLink(c.id)} className="btn-secondary text-xs">Send Magic Link</button>
+                    <button onClick={() => sendMagicLink(c.id)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+                      Send Magic Link
+                    </button>
+                    <button onClick={() => setShadowTarget(c)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">
+                      Confirm with Evidence
+                    </button>
                   </>
                 )}
                 {(c.status === "CONFIRMED" || c.status === "LOGGED") && (
@@ -267,9 +357,9 @@ export default function ChangesPage() {
               <svg className="h-6 w-6 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 01-9 9" /></svg>
             </div>
             <p className="mt-3 font-medium text-zinc-900">No changes recorded yet</p>
-            <p className="mt-1 text-sm text-muted">Upload a change order document or draft one manually</p>
+            <p className="mt-1 text-sm text-muted">Upload a meeting transcript, email, or change order to get started</p>
             <div className="mt-4 flex gap-2">
-              <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">Upload Change Order</button>
+              <button onClick={() => setShowIngestion(true)} className="btn-primary">Log Change Event</button>
               <button onClick={() => setShowNew(true)} className="btn-secondary">Draft Manually</button>
             </div>
           </div>
@@ -278,19 +368,19 @@ export default function ChangesPage() {
 
       {/* Detail modal */}
       {selectedChange && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedChange(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setSelectedChange(null); setReleaseGate(null); }}>
           <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <StatusBadge status={selectedChange.status} />
+                <StatusBadge status={selectedChange.status} confirmationMode={selectedChange.confirmationMode} />
                 <span className="font-mono text-xs text-muted">#{selectedChange.sequenceNum}</span>
               </div>
-              <button onClick={() => setSelectedChange(null)} className="text-muted hover:text-zinc-900">
+              <button onClick={() => { setSelectedChange(null); setReleaseGate(null); }} className="text-muted hover:text-zinc-900">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
             <h3 className="mt-3 text-lg font-semibold text-zinc-900">{selectedChange.title}</h3>
-            {selectedChange.description && <p className="mt-2 text-sm text-muted">{selectedChange.description}</p>}
+            {selectedChange.description && <p className="mt-2 text-sm text-muted whitespace-pre-line">{selectedChange.description}</p>}
             <div className="mt-4 grid grid-cols-2 gap-4">
               <div className="rounded-lg bg-zinc-50 p-3">
                 <p className="text-xs text-muted">Cost Impact</p>
@@ -302,21 +392,100 @@ export default function ChangesPage() {
                 <p className="text-xs text-muted">Severity</p>
                 <div className="mt-1"><StatusBadge status={selectedChange.severity} /></div>
               </div>
+              {selectedChange.scheduleImpactDays != null && (
+                <div className="rounded-lg bg-zinc-50 p-3">
+                  <p className="text-xs text-muted">Schedule Impact</p>
+                  <p className="mt-1 text-sm font-semibold text-zinc-900">+{selectedChange.scheduleImpactDays} days</p>
+                </div>
+              )}
+              {selectedChange.reasonCode && (
+                <div className="rounded-lg bg-zinc-50 p-3">
+                  <p className="text-xs text-muted">Reason Code</p>
+                  <p className="mt-1 text-sm font-semibold text-zinc-900">{REASON_LABELS[selectedChange.reasonCode] ?? selectedChange.reasonCode}</p>
+                </div>
+              )}
             </div>
             <div className="mt-4 rounded-lg bg-zinc-50 p-3">
               <p className="text-xs text-muted">Created</p>
               <p className="mt-1 text-sm font-medium text-zinc-900">{new Date(selectedChange.createdAt).toLocaleString()}</p>
             </div>
+
+            {/* Reason code gate (inline form before release) */}
+            {releaseGate && releaseGate.changeId === selectedChange.id && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-amber-800">A reason code is required before releasing this change.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Reason Code *</label>
+                    <select
+                      value={releaseGate.reasonCode}
+                      onChange={(e) => setReleaseGate({ ...releaseGate, reasonCode: e.target.value })}
+                      className="input"
+                    >
+                      <option value="">Select reason...</option>
+                      {Object.entries(REASON_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Schedule Impact (days)</label>
+                    <input
+                      type="number"
+                      value={releaseGate.scheduleImpactDays}
+                      onChange={(e) => setReleaseGate({ ...releaseGate, scheduleImpactDays: e.target.value })}
+                      placeholder="e.g., 5"
+                      className="input"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={submitReleaseGate} disabled={!releaseGate.reasonCode} className="btn-primary disabled:opacity-50">
+                    Release
+                  </button>
+                  <button onClick={() => setReleaseGate(null)} className="btn-secondary">Cancel</button>
+                </div>
+              </div>
+            )}
+
             <div className="mt-6 flex justify-end gap-2">
+              {selectedChange.status === "DRAFT" && !releaseGate && (
+                <button onClick={() => releaseChange(selectedChange.id)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                  Release
+                </button>
+              )}
               {selectedChange.status === "RELEASED" && (
                 <>
-                  <button onClick={() => transitionChange(selectedChange.id, "CONFIRMED")} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500">Confirm</button>
+                  <button onClick={() => sendMagicLink(selectedChange.id)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                    Send Magic Link
+                  </button>
+                  <button onClick={() => { setSelectedChange(null); setShadowTarget(selectedChange); }} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500">
+                    Confirm with Evidence
+                  </button>
                 </>
               )}
-              <button onClick={() => setSelectedChange(null)} className="btn-secondary">Close</button>
+              <button onClick={() => { setSelectedChange(null); setReleaseGate(null); }} className="btn-secondary">Close</button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Ingestion modal */}
+      {showIngestion && (
+        <IngestionModal
+          programId={programId}
+          onDone={() => { setShowIngestion(false); refreshAll(); }}
+          onClose={() => setShowIngestion(false)}
+          onDraftManually={() => setShowNew(true)}
+        />
+      )}
+
+      {/* Shadow confirmation modal */}
+      {shadowTarget && (
+        <ShadowConfirmModal
+          changeId={shadowTarget.id}
+          programId={programId}
+          onConfirmed={() => { setShadowTarget(null); refreshAll(); }}
+          onClose={() => setShadowTarget(null)}
+        />
       )}
     </div>
   );

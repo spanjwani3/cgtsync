@@ -1,55 +1,57 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import type { EvidenceUploadType, ExtractionTarget } from "./useExtractionPipeline";
 
-export type ExtractionTarget = "BASELINE" | "INVOICE" | "CHANGE_ORDER" | "CHANGE_TRANSCRIPT" | "CHANGE_EMAIL" | "TERMS";
-export type EvidenceUploadType = "SOW_MSA" | "INVOICE" | "CHANGE_ORDER" | "TRANSCRIPT" | "EMAIL_APPROVAL" | "OTHER";
-
-export type PipelineStatus =
+export type ReviewPipelineStatus =
   | "idle"
   | "uploading"
   | "extracting"
+  | "reviewing"
   | "applying"
   | "done"
   | "error";
 
-interface ExtractionPipelineOptions {
+interface ReviewPipelineOptions {
   programId: string;
   evidenceType: EvidenceUploadType;
   targetType: ExtractionTarget;
-  /** Return the body for POST /api/gateway/extraction/[jobId]/apply */
-  prepareApplyBody: (
-    jobId: string,
-    extractedData: Record<string, unknown>,
-  ) => Promise<Record<string, string>>;
-  /** Called after successful apply */
   onSuccess: (result: { createdCount: number; targetType: string }) => Promise<void>;
-  /** Optional error callback */
   onError?: (error: string, step: string) => void;
 }
 
-export interface ExtractionPipelineState {
-  status: PipelineStatus;
+export interface ReviewPipelineState {
+  status: ReviewPipelineStatus;
   progress: string;
   error: string | null;
-  /** Kick off the full pipeline for a file */
+  /** Extracted data exposed for the review UI */
+  extractedData: Record<string, unknown> | null;
+  /** Job ID exposed for the apply call */
+  jobId: string | null;
+  /** Start the upload + extraction pipeline */
   run: (file: File) => Promise<void>;
+  /** After user reviews, apply selected candidates */
+  applySelected: (selectedIndices: number[]) => Promise<void>;
   /** Reset to idle state */
   reset: () => void;
 }
 
-export function useExtractionPipeline(
-  opts: ExtractionPipelineOptions,
-): ExtractionPipelineState {
-  const [status, setStatus] = useState<PipelineStatus>("idle");
+export function useExtractionPipelineWithReview(
+  opts: ReviewPipelineOptions,
+): ReviewPipelineState {
+  const [status, setStatus] = useState<ReviewPipelineStatus>("idle");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [extractedData, setExtractedData] = useState<Record<string, unknown> | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reset = useCallback(() => {
     setStatus("idle");
     setProgress("");
     setError(null);
+    setExtractedData(null);
+    setJobId(null);
     if (doneTimerRef.current) {
       clearTimeout(doneTimerRef.current);
       doneTimerRef.current = null;
@@ -61,7 +63,7 @@ export function useExtractionPipeline(
       reset();
 
       try {
-        // --- Step 1: Upload evidence ---
+        // Step 1: Upload evidence
         setStatus("uploading");
         setProgress("Uploading document...");
 
@@ -80,9 +82,9 @@ export function useExtractionPipeline(
         }
         const evidence = await uploadRes.json();
 
-        // --- Step 2: Create extraction job + run ---
+        // Step 2: Create extraction job + run
         setStatus("extracting");
-        setProgress("AI is reading your document...");
+        setProgress("AI is scanning for scope changes...");
 
         const createRes = await fetch("/api/gateway/extraction", {
           method: "POST",
@@ -106,48 +108,16 @@ export function useExtractionPipeline(
           throw { step: "extracting", message: d.error ?? "Extraction failed" };
         }
         const runData = await runRes.json();
-
-        // --- Step 3: Apply extracted data ---
-        setStatus("applying");
-        setProgress("Populating data...");
-
-        const extractedData =
+        const extracted =
           (runData.job?.extractedData as Record<string, unknown>) ?? {};
 
-        const applyBody = await opts.prepareApplyBody(job.id, extractedData);
-
-        const applyRes = await fetch(
-          `/api/gateway/extraction/${job.id}/apply`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(applyBody),
-          },
-        );
-        if (!applyRes.ok) {
-          const d = await applyRes.json().catch(() => ({}));
-          throw { step: "applying", message: d.error ?? "Failed to apply extracted data" };
-        }
-        const applyResult = await applyRes.json();
-
-        // --- Done ---
-        setStatus("done");
-        setProgress(
-          `${applyResult.createdCount} item${applyResult.createdCount === 1 ? "" : "s"} extracted successfully`,
-        );
-
-        await opts.onSuccess({
-          createdCount: applyResult.createdCount,
-          targetType: applyResult.targetType,
-        });
-
-        doneTimerRef.current = setTimeout(() => {
-          setStatus("idle");
-          setProgress("");
-        }, 4000);
+        // Step 3: Pause at "reviewing" — expose data for the UI
+        setExtractedData(extracted);
+        setJobId(job.id);
+        setStatus("reviewing");
+        setProgress("Review extracted candidates below");
       } catch (err: unknown) {
-        const step =
-          (err as { step?: string })?.step ?? "unknown";
+        const step = (err as { step?: string })?.step ?? "unknown";
         const message =
           (err as { message?: string })?.message ??
           (err instanceof Error ? err.message : "An unexpected error occurred");
@@ -161,5 +131,55 @@ export function useExtractionPipeline(
     [opts, reset],
   );
 
-  return { status, progress, error, run, reset };
+  const applySelected = useCallback(
+    async (selectedIndices: number[]) => {
+      if (!jobId) return;
+
+      try {
+        setStatus("applying");
+        setProgress("Creating change records...");
+
+        const applyRes = await fetch(
+          `/api/gateway/extraction/${jobId}/apply`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ selectedIndices }),
+          },
+        );
+        if (!applyRes.ok) {
+          const d = await applyRes.json().catch(() => ({}));
+          throw { step: "applying", message: d.error ?? "Failed to apply" };
+        }
+        const applyResult = await applyRes.json();
+
+        setStatus("done");
+        setProgress(
+          `${applyResult.createdCount} change${applyResult.createdCount === 1 ? "" : "s"} logged successfully`,
+        );
+
+        await opts.onSuccess({
+          createdCount: applyResult.createdCount,
+          targetType: applyResult.targetType,
+        });
+
+        doneTimerRef.current = setTimeout(() => {
+          reset();
+        }, 4000);
+      } catch (err: unknown) {
+        const step = (err as { step?: string })?.step ?? "unknown";
+        const message =
+          (err as { message?: string })?.message ??
+          (err instanceof Error ? err.message : "An unexpected error occurred");
+
+        setStatus("error");
+        setError(message);
+        setProgress("");
+        opts.onError?.(message, step);
+      }
+    },
+    [jobId, opts, reset],
+  );
+
+  return { status, progress, error, extractedData, jobId, run, applySelected, reset };
 }
