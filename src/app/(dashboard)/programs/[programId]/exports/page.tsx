@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
+import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 // Must match prisma ExportType enum values
 const EXPORT_TYPES = [
@@ -17,6 +18,8 @@ export default function ExportsPage() {
   const [generating, setGenerating] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [lastExport, setLastExport] = useState<{ type: string; url: string } | null>(null);
+
+  useSyncProgram();
 
   async function generateExport(type: string) {
     setGenerating(type);
@@ -42,7 +45,8 @@ export default function ExportsPage() {
   return (
     <div>
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900">Export Center</h1>
+        <p className="text-sm text-muted">Exports</p>
+        <h1 className="text-2xl font-bold text-zinc-900">Export Center</h1>
         <p className="mt-1 text-sm text-zinc-500">Generate governance packs and dispute packets</p>
       </div>
 
@@ -65,7 +69,7 @@ export default function ExportsPage() {
             <button
               onClick={() => generateExport(exp.type)}
               disabled={generating !== null}
-              className="mt-4 w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="mt-4 w-full btn-primary disabled:opacity-50"
             >
               {generating === exp.type ? "Generating..." : "Generate PDF"}
             </button>

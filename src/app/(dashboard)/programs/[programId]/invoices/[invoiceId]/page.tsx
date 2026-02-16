@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 interface LineItem {
   id: string;
@@ -44,6 +45,8 @@ export default function InvoiceDetailPage() {
   const [clauses, setClauses] = useState<Array<{ id: string; title: string; clauseRef: string | null; value: string | null }>>([]);
   const [changes, setChanges] = useState<Array<{ id: string; title: string; sequenceNum: number }>>([]);
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
+
+  useSyncProgram();
 
   const loadInvoice = useCallback(async () => {
     const res = await fetch(`/api/invoices/${invoiceId}`);
@@ -133,7 +136,8 @@ export default function InvoiceDetailPage() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">
+          <p className="text-sm text-muted">Invoice Details</p>
+          <h1 className="text-2xl font-bold text-zinc-900">
             Invoice: {invoice.invoiceNumber ?? "N/A"}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -171,7 +175,7 @@ export default function InvoiceDetailPage() {
 
       {/* Actions */}
       <div className="mt-4 flex gap-2">
-        <button onClick={() => setShowAddLine(true)} className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800">
+        <button onClick={() => setShowAddLine(true)} className="btn-primary">
           Add Line Item
         </button>
         {invoice.status === "UPLOADED" && invoice.lineItems.length > 0 && (
@@ -222,7 +226,7 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={addLineItem} className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800">Add</button>
+            <button onClick={addLineItem} className="btn-primary">Add</button>
             <button onClick={() => setShowAddLine(false)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700">Cancel</button>
           </div>
         </div>

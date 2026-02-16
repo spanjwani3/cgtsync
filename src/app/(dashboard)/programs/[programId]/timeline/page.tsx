@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 const TERM_TYPES = [
   "RESERVATION_FEE",
@@ -82,6 +83,8 @@ export default function TimelinePage() {
   const [formConditions, setFormConditions] = useState("");
   const [saving, setSaving] = useState(false);
 
+  useSyncProgram();
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -158,7 +161,8 @@ export default function TimelinePage() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Commitment Timeline</h1>
+          <p className="text-sm text-muted">Timeline</p>
+          <h1 className="text-2xl font-bold text-zinc-900">Commitment Timeline</h1>
           <p className="mt-1 text-sm text-zinc-500">
             Track deadlines, obligations, and financial commitments
           </p>
@@ -179,7 +183,7 @@ export default function TimelinePage() {
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            className="btn-primary"
           >
             {showForm ? "Cancel" : "Add Term"}
           </button>
@@ -261,7 +265,7 @@ export default function TimelinePage() {
             <button
               type="submit"
               disabled={saving || !formLabel}
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="btn-primary disabled:opacity-50"
             >
               {saving ? "Creating..." : "Create Term"}
             </button>

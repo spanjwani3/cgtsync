@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 const EVIDENCE_TYPES = [
   "INVOICE",
@@ -100,6 +101,8 @@ export default function EvidencePage() {
   const [applying, setApplying] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useSyncProgram();
 
   const loadEvidence = useCallback(async () => {
     setLoading(true);

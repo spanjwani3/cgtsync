@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 interface Change {
   id: string;
@@ -30,6 +31,8 @@ export default function ChangesPage() {
     severity: "MEDIUM",
     estimatedImpact: "",
   });
+
+  useSyncProgram();
 
   const loadChanges = useCallback(async () => {
     const res = await fetch(`/api/changes?programId=${programId}`);
@@ -92,16 +95,25 @@ export default function ChangesPage() {
     }
   }
 
-  if (loading) return <div className="py-8 text-sm text-zinc-500">Loading changes...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="flex items-center gap-3 text-sm text-muted">
+        <svg className="h-5 w-5 animate-spin text-accent" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+        Loading changes...
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Change Ledger</h1>
-          <p className="mt-1 text-sm text-zinc-500">One-Way Valve: changes are logged and confirmed</p>
+          <p className="text-sm text-muted">Change Events</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-zinc-900">Change Ledger</h1>
+          <p className="mt-1 text-sm text-muted">One-Way Valve: changes are logged and confirmed</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800">
+        <button onClick={() => setShowNew(true)} className="btn-primary">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           Draft Change
         </button>
       </div>

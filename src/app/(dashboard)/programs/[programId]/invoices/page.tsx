@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 interface Invoice {
   id: string;
@@ -32,6 +33,8 @@ export default function InvoicesPage() {
     currency: "USD",
   });
   const [file, setFile] = useState<File | null>(null);
+
+  useSyncProgram();
 
   const loadInvoices = useCallback(async () => {
     const res = await fetch(`/api/invoices?programId=${programId}`);
@@ -101,16 +104,25 @@ export default function InvoicesPage() {
     }
   }
 
-  if (loading) return <div className="py-8 text-sm text-zinc-500">Loading invoices...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="flex items-center gap-3 text-sm text-muted">
+        <svg className="h-5 w-5 animate-spin text-accent" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+        Loading invoices...
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Invoice Reconciliation</h1>
-          <p className="mt-1 text-sm text-zinc-500">Economic Defense: upload, map, flag, dispute</p>
+          <p className="text-sm text-muted">Reconciliation</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-zinc-900">Invoice Reconciliation</h1>
+          <p className="mt-1 text-sm text-muted">Economic Defense: upload, map, flag, dispute</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800">
+        <button onClick={() => setShowNew(true)} className="btn-primary">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
           Upload Invoice
         </button>
       </div>
