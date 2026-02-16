@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { OrgRole, LineItemFlag } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
+import { CHANGE_INCLUDE_SELECT } from "@/lib/server/change-compat";
 
 export async function GET(
   req: NextRequest,
@@ -15,7 +16,7 @@ export async function GET(
     await requireProgramAccess(invoice.programId);
     const items = await prisma.invoiceLineItem.findMany({
       where: { invoiceId },
-      include: { clause: true, change: true },
+      include: { clause: true, change: CHANGE_INCLUDE_SELECT },
       orderBy: { sortOrder: "asc" },
     });
     return NextResponse.json(items);

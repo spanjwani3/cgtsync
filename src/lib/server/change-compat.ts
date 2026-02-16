@@ -34,6 +34,12 @@ export const CHANGE_EXTENDED_SELECT = {
   confirmationMode: true,
 } as const;
 
+/**
+ * Use in place of `change: true` inside Prisma `include` blocks.
+ * e.g., `include: { clause: true, change: CHANGE_INCLUDE_SELECT }`
+ */
+export const CHANGE_INCLUDE_SELECT = { select: CHANGE_BASE_SELECT } as const;
+
 let _migrationApplied: boolean | null = null;
 
 /**

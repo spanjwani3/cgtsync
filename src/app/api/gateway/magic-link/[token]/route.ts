@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateMagicLink, recordMagicLinkView, confirmMagicLink } from "@/lib/server/magic-link";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
+import { getChangeSelect, CHANGE_BASE_SELECT } from "@/lib/server/change-compat";
 
 export async function GET(
   req: NextRequest,
@@ -22,9 +23,10 @@ export async function GET(
         include: { clauses: { orderBy: { sortOrder: "asc" } }, program: { select: { name: true, cdmoName: true } } },
       });
     } else if (link.scope === "CHANGE_CONFIRM") {
+      const changeSelect = await getChangeSelect(prisma);
       entity = await prisma.change.findUnique({
         where: { id: link.entityId },
-        include: { program: { select: { name: true, cdmoName: true } } },
+        select: { ...changeSelect, program: { select: { name: true, cdmoName: true } } },
       });
     }
 
@@ -60,7 +62,7 @@ export async function POST(
         });
       }
     } else if (confirmed.scope === "CHANGE_CONFIRM") {
-      const change = await prisma.change.findUnique({ where: { id: confirmed.entityId } });
+      const change = await prisma.change.findUnique({ where: { id: confirmed.entityId }, select: CHANGE_BASE_SELECT });
       if (change && change.status === "RELEASED") {
         await prisma.change.update({ where: { id: confirmed.entityId }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
         await logEvent({

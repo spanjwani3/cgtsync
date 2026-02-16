@@ -6,6 +6,7 @@ import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generatePdf } from "@/lib/server/pdf";
 import { uploadEvidence, getSignedUrl } from "@/lib/server/storage";
 import { v4 as uuidv4 } from "uuid";
+import { CHANGE_BASE_SELECT, CHANGE_INCLUDE_SELECT } from "@/lib/server/change-compat";
 
 const VALID_EXPORT_TYPES = new Set(Object.values(ExportType));
 
@@ -98,6 +99,7 @@ async function buildExportSections(programId: string, type: ExportType) {
     case "CHANGE_LEDGER_PACK": {
       const changes = await prisma.change.findMany({
         where: { programId },
+        select: CHANGE_BASE_SELECT,
         orderBy: { sequenceNum: "asc" },
       });
       return [
@@ -131,7 +133,7 @@ async function buildExportSections(programId: string, type: ExportType) {
     case "DISPUTE_PACKET": {
       const flaggedItems = await prisma.invoiceLineItem.findMany({
         where: { invoice: { programId }, flag: { not: "NONE" } },
-        include: { invoice: true, clause: true, change: true },
+        include: { invoice: true, clause: true, change: CHANGE_INCLUDE_SELECT },
         orderBy: { createdAt: "desc" },
       });
       return [
@@ -148,6 +150,7 @@ async function buildExportSections(programId: string, type: ExportType) {
       const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const recentChanges = await prisma.change.findMany({
         where: { programId, createdAt: { gte: oneWeekAgo } },
+        select: CHANGE_BASE_SELECT,
         orderBy: { createdAt: "desc" },
       });
       const recentFlags = await prisma.invoiceLineItem.findMany({
