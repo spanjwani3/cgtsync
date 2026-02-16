@@ -177,6 +177,17 @@ export async function POST(
           createdCount++;
         }
       }
+
+      // Auto-reconcile: map line items to truth sources and flag anomalies
+      if (createdCount > 0 && programId) {
+        try {
+          const { reconcileInvoice } = await import("@/lib/server/reconciliation");
+          await reconcileInvoice(invoiceId, programId, userId);
+        } catch (reconcileErr) {
+          // Log but don't fail the apply — line items are already created
+          console.error("Auto-reconciliation failed:", reconcileErr);
+        }
+      }
     } else if (job.targetType === "CHANGE_ORDER") {
       const changeTitle = data.changeTitle as string | undefined;
       if (!changeTitle) {

@@ -574,6 +574,26 @@ function normalizeProvenance(data: Record<string, unknown>, evidenceId: string):
   return result;
 }
 
+// ─── Text-only Claude call (no document) ─────────────────────
+
+/**
+ * Call Claude with a text-only prompt and validate the response against a Zod schema.
+ * Used by the reconciliation engine and other non-document AI features.
+ */
+export async function callClaudeWithSchema<T>(
+  prompt: string,
+  schema: z.ZodType<T>,
+): Promise<{ data: T; tokensUsed: number }> {
+  const client = getClient();
+  const model = process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL;
+  const contentBlocks: Anthropic.ContentBlockParam[] = [{ type: "text", text: prompt }];
+  const result = await parseWithRetry(client, model, contentBlocks, schema as z.ZodTypeAny);
+  return {
+    data: result.data as T,
+    tokensUsed: result.totalInputTokens + result.totalOutputTokens,
+  };
+}
+
 // ─── Main extraction entry point ─────────────────────────────
 
 export interface ExtractionResult {
