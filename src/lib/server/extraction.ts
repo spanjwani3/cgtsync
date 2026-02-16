@@ -337,7 +337,7 @@ async function callClaude(
 ): Promise<{ raw: string; usage: { input_tokens: number; output_tokens: number } }> {
   const response = await client.messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: 16384,
     messages: [{ role: "user", content: contentBlocks }],
   });
   const textBlock = response.content.find((b) => b.type === "text");
