@@ -70,11 +70,12 @@ export async function POST(
     if (action === "counter") {
       // --- COUNTER flow: set status to COUNTERED and save note ---
       if (link.scope === "BASELINE_CONFIRM") {
-        const baseline = await prisma.baseline.findUnique({ where: { id: link.entityId } });
+        const baseline = await prisma.baseline.findUnique({ where: { id: link.entityId }, select: { id: true, programId: true, status: true } });
         if (baseline && baseline.status === "RELEASED") {
           await prisma.baseline.update({
             where: { id: link.entityId },
             data: { status: "COUNTERED", counterpartyNote: note },
+            select: { id: true },
           });
           await logEvent({
             programId: baseline.programId, action: "BASELINE_COUNTERED",
@@ -89,6 +90,7 @@ export async function POST(
           await prisma.change.update({
             where: { id: link.entityId },
             data: { status: "COUNTERED", counterpartyNote: note },
+            select: CHANGE_BASE_SELECT,
           });
           await logEvent({
             programId: change.programId, action: "CHANGE_COUNTERED",
@@ -109,11 +111,12 @@ export async function POST(
     const confirmed = await confirmMagicLink(link.id, ipAddress);
 
     if (confirmed.scope === "BASELINE_CONFIRM") {
-      const baseline = await prisma.baseline.findUnique({ where: { id: confirmed.entityId } });
+      const baseline = await prisma.baseline.findUnique({ where: { id: confirmed.entityId }, select: { id: true, programId: true, status: true } });
       if (baseline && (baseline.status === "RELEASED" || baseline.status === "COUNTERED")) {
         await prisma.baseline.update({
           where: { id: confirmed.entityId },
           data: { status: "CONFIRMED", confirmedAt: new Date(), ...(note ? { counterpartyNote: note } : {}) },
+          select: { id: true },
         });
         await logEvent({
           programId: baseline.programId, action: "BASELINE_CONFIRMED",
@@ -128,6 +131,7 @@ export async function POST(
         await prisma.change.update({
           where: { id: confirmed.entityId },
           data: { status: "CONFIRMED", confirmedAt: new Date(), ...(note ? { counterpartyNote: note } : {}) },
+          select: CHANGE_BASE_SELECT,
         });
         await logEvent({
           programId: change.programId, action: "CHANGE_CONFIRMED",
