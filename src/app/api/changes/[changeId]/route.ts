@@ -96,10 +96,16 @@ export async function PATCH(
       return NextResponse.json(updated);
     }
 
+    // estimatedImpact: allow updating cost impact
+    if (body.estimatedImpact !== undefined) {
+      data.estimatedImpact = body.estimatedImpact != null ? parseFloat(String(body.estimatedImpact)) : null;
+    }
+
     if (status) {
       const transitions: Record<string, string[]> = {
         DRAFT: ["RELEASED"],
-        RELEASED: ["CONFIRMED", "LOGGED"],
+        RELEASED: ["CONFIRMED", "LOGGED", "COUNTERED"],
+        COUNTERED: ["RELEASED"],
       };
       const allowed = transitions[change.status] ?? [];
       if (!allowed.includes(status)) {

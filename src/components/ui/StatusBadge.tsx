@@ -11,6 +11,7 @@ const statusColors: Record<string, string> = {
   FLAGGED: "bg-red-100 text-red-700",
   APPROVED: "bg-green-100 text-green-700",
   DISPUTED: "bg-red-100 text-red-700",
+  COUNTERED: "bg-amber-100 text-amber-700",
   LOGGED: "bg-green-50 text-green-600",
   LOW: "bg-green-50 text-green-600",
   MEDIUM: "bg-amber-50 text-amber-600",

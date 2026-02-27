@@ -209,9 +209,18 @@ For each clause, provide:
 - type: One of PRICING, TIMELINE, SCOPE, QUALITY, REGULATORY, PAYMENT_TERMS, IP, OTHER
 - title: Short descriptive title (e.g., "API manufacturing price per kg")
 - description: Full text or summary of the clause
-- value: Numeric value if applicable (e.g., price amounts, durations). Use null if not numeric.
-- unit: Unit for the value (e.g., "USD", "days", "kg", "USD/kg"). Use null if no value.
+- value: Numeric value — REQUIRED for PRICING, TIMELINE, and PAYMENT_TERMS clauses. Extract the primary dollar amount, duration, or numeric term. Use null ONLY if the clause is purely descriptive with no numbers at all.
+- unit: Unit for the value (e.g., "USD", "USD/batch", "USD/kg", "days", "weeks", "kg"). REQUIRED whenever value is set.
 ${PROVENANCE_INSTRUCTION}
+
+CRITICAL — Value Extraction Rules:
+- For PRICING clauses: ALWAYS extract the numeric price. E.g., "$285,000 per batch" → value: 285000, unit: "USD/batch"
+- For TIMELINE clauses: ALWAYS extract numeric durations. E.g., "12 weeks lead time" → value: 12, unit: "weeks"
+- For PAYMENT_TERMS clauses: ALWAYS extract numeric terms. E.g., "Net 45 days" → value: 45, unit: "days". For milestone payments, e.g., "50% upfront" → value: 50, unit: "%"
+- For tiered/volume pricing, extract each tier as a SEPARATE clause with its own value
+- If a value is a range, use the midpoint
+- Do NOT leave value as null if any numeric figure appears in the clause text
+- Extract EVERY pricing line, payment term, and timeline clause as separate items — do NOT combine multiple items into one clause
 
 Return a JSON object with this exact structure:
 {
@@ -220,21 +229,43 @@ Return a JSON object with this exact structure:
   "parties": ["Party A name", "Party B name"],
   "clauses": [
     {
-      "clauseRef": "1.1",
+      "clauseRef": "3.1",
       "type": "PRICING",
-      "title": "...",
-      "description": "...",
-      "value": 50000,
-      "unit": "USD",
+      "title": "Manufacturing batch cost",
+      "description": "The cost for API manufacturing is $285,000 per batch",
+      "value": 285000,
+      "unit": "USD/batch",
       "excerpt": "verbatim quote from document...",
       "page": 3,
       "confidence": 0.95
+    },
+    {
+      "clauseRef": "3.2",
+      "type": "PRICING",
+      "title": "Quality control testing cost",
+      "description": "QC testing is charged at $45,000 per batch",
+      "value": 45000,
+      "unit": "USD/batch",
+      "excerpt": "verbatim quote from document...",
+      "page": 3,
+      "confidence": 0.92
+    },
+    {
+      "clauseRef": "7.1",
+      "type": "PAYMENT_TERMS",
+      "title": "Payment terms",
+      "description": "Payment due within 45 days of invoice date",
+      "value": 45,
+      "unit": "days",
+      "excerpt": "verbatim quote from document...",
+      "page": 7,
+      "confidence": 0.90
     }
   ],
   "summary": "Brief 1-2 sentence summary of the document"
 }
 
-Extract ALL identifiable terms. Be thorough. If a value appears as a range, use the midpoint. Return ONLY valid JSON, no markdown fences.`;
+Extract ALL identifiable terms. Be thorough — especially pricing, payment terms, and timeline clauses which MUST have numeric values. Return ONLY valid JSON, no markdown fences.`;
 
 const INVOICE_PROMPT = `You are an expert invoice analyst for biopharma outsourcing. Extract the invoice header and all line items from this document.
 ${PROVENANCE_INSTRUCTION}

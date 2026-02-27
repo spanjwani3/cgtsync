@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export type ExtractionTarget = "BASELINE" | "INVOICE" | "CHANGE_ORDER" | "CHANGE_TRANSCRIPT" | "CHANGE_EMAIL" | "TERMS";
 export type EvidenceUploadType = "SOW_MSA" | "INVOICE" | "CHANGE_ORDER" | "TRANSCRIPT" | "EMAIL_APPROVAL" | "OTHER";
@@ -38,6 +39,17 @@ export interface ExtractionPipelineState {
   reset: () => void;
 }
 
+/** Translate raw API error messages into user-friendly text */
+function friendlyError(raw: string): string {
+  if (raw === "Unauthorized" || raw === "UNAUTHORIZED") {
+    return "Your session has expired. Please refresh the page and sign in again.";
+  }
+  if (raw === "Forbidden" || raw === "FORBIDDEN") {
+    return "You don't have permission to perform this action. An Operator or Admin role is required.";
+  }
+  return raw;
+}
+
 export function useExtractionPipeline(
   opts: ExtractionPipelineOptions,
 ): ExtractionPipelineState {
@@ -61,6 +73,13 @@ export function useExtractionPipeline(
       reset();
 
       try {
+        // --- Pre-check: verify session is active ---
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          throw { step: "auth", message: "Your session has expired. Please refresh the page and sign in again." };
+        }
+
         // --- Step 1: Upload evidence ---
         setStatus("uploading");
         setProgress("Uploading document...");
@@ -73,10 +92,11 @@ export function useExtractionPipeline(
         const uploadRes = await fetch("/api/gateway/evidence", {
           method: "POST",
           body: fd,
+          credentials: "same-origin",
         });
         if (!uploadRes.ok) {
           const d = await uploadRes.json().catch(() => ({}));
-          throw { step: "uploading", message: d.error ?? "Upload failed" };
+          throw { step: "uploading", message: friendlyError(d.error ?? "Upload failed") };
         }
         const evidence = await uploadRes.json();
 
@@ -91,19 +111,21 @@ export function useExtractionPipeline(
             evidenceId: evidence.id,
             targetType: opts.targetType,
           }),
+          credentials: "same-origin",
         });
         if (!createRes.ok) {
           const d = await createRes.json().catch(() => ({}));
-          throw { step: "extracting", message: d.error ?? "Failed to create extraction job" };
+          throw { step: "extracting", message: friendlyError(d.error ?? "Failed to create extraction job") };
         }
         const { job } = await createRes.json();
 
         const runRes = await fetch(`/api/gateway/extraction/${job.id}/run`, {
           method: "POST",
+          credentials: "same-origin",
         });
         if (!runRes.ok) {
           const d = await runRes.json().catch(() => ({}));
-          throw { step: "extracting", message: d.error ?? "Extraction failed" };
+          throw { step: "extracting", message: friendlyError(d.error ?? "Extraction failed") };
         }
         const runData = await runRes.json();
 
@@ -122,11 +144,12 @@ export function useExtractionPipeline(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(applyBody),
+            credentials: "same-origin",
           },
         );
         if (!applyRes.ok) {
           const d = await applyRes.json().catch(() => ({}));
-          throw { step: "applying", message: d.error ?? "Failed to apply extracted data" };
+          throw { step: "applying", message: friendlyError(d.error ?? "Failed to apply extracted data") };
         }
         const applyResult = await applyRes.json();
 

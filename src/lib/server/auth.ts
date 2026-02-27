@@ -22,12 +22,24 @@ export interface ProgramAuthContext extends OrgAuthContext {
  * Returns null if not authenticated.
  */
 export async function getAuthUser(): Promise<AuthContext | null> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    console.error("[auth] Missing Supabase env vars — NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY not set");
+    return null;
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
 
-  if (!user) return null;
+  if (!user) {
+    console.warn("[auth] getAuthUser: no user", {
+      error: error?.message ?? "none",
+      code: (error as Record<string, unknown> | null)?.code ?? "none",
+    });
+    return null;
+  }
 
   return {
     userId: user.id,

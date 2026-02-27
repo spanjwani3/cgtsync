@@ -19,6 +19,7 @@ interface Change {
   reasonCode: string | null;
   scheduleImpactDays: number | null;
   confirmationMode: string | null;
+  counterpartyNote: string | null;
   releasedAt: string | null;
   confirmedAt: string | null;
   createdAt: string;
@@ -303,6 +304,12 @@ export default function ChangesPage() {
 
               <h3 className="mt-2 font-semibold text-zinc-900">{c.title}</h3>
               {c.description && <p className="mt-1 text-sm text-muted line-clamp-2">{c.description}</p>}
+              {c.counterpartyNote && c.status === "COUNTERED" && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase text-amber-600">Counterparty Note</p>
+                  <p className="mt-0.5 text-xs text-amber-800">{c.counterpartyNote}</p>
+                </div>
+              )}
 
               <div className="mt-3 flex items-center gap-4">
                 {impact !== null && (
@@ -345,6 +352,16 @@ export default function ChangesPage() {
                     </button>
                     <button onClick={() => setShadowTarget(c)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">
                       Confirm with Evidence
+                    </button>
+                  </>
+                )}
+                {c.status === "COUNTERED" && (
+                  <>
+                    <button onClick={() => transitionChange(c.id, "RELEASED")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+                      Re-release
+                    </button>
+                    <button onClick={() => sendMagicLink(c.id)} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500">
+                      Send New Link
                     </button>
                   </>
                 )}
@@ -419,6 +436,14 @@ export default function ChangesPage() {
               <p className="mt-1 text-sm font-medium text-zinc-900">{new Date(selectedChange.createdAt).toLocaleString()}</p>
             </div>
 
+            {/* Counterparty note */}
+            {selectedChange.counterpartyNote && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-600 uppercase">Counterparty Note</p>
+                <p className="mt-1 text-sm text-amber-800 whitespace-pre-line">{selectedChange.counterpartyNote}</p>
+              </div>
+            )}
+
             {/* Release gate: require Days + Dollars + Reason before releasing */}
             {releaseGate && releaseGate.changeId === selectedChange.id && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
@@ -478,6 +503,16 @@ export default function ChangesPage() {
                   </button>
                   <button onClick={() => { setSelectedChange(null); setShadowTarget(selectedChange); }} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500">
                     Confirm with Evidence
+                  </button>
+                </>
+              )}
+              {selectedChange.status === "COUNTERED" && (
+                <>
+                  <button onClick={() => { transitionChange(selectedChange.id, "RELEASED"); }} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                    Re-release
+                  </button>
+                  <button onClick={() => sendMagicLink(selectedChange.id)} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500">
+                    Send New Link
                   </button>
                 </>
               )}

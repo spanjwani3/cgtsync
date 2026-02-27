@@ -24,6 +24,7 @@ enum ProgramStatus {
 enum BaselineStatus {
   DRAFT
   RELEASED
+  COUNTERED
   CONFIRMED
   LOCKED
   SUPERSEDED
@@ -43,6 +44,7 @@ enum ClauseType {
 enum ChangeStatus {
   DRAFT
   RELEASED
+  COUNTERED
   CONFIRMED
   LOGGED
 }
@@ -108,6 +110,7 @@ enum EventAction {
   BASELINE_CREATED
   BASELINE_RELEASED
   BASELINE_CONFIRMED
+  BASELINE_COUNTERED
   BASELINE_LOCKED
   BASELINE_SUPERSEDED
   CLAUSE_CREATED
@@ -116,6 +119,7 @@ enum EventAction {
   CHANGE_DRAFTED
   CHANGE_RELEASED
   CHANGE_CONFIRMED
+  CHANGE_COUNTERED
   CHANGE_AUTO_LOGGED
   // Invoice
   INVOICE_UPLOADED
@@ -271,9 +275,10 @@ model Baseline {
   releasedAt   DateTime?      @map("released_at")
   confirmedAt  DateTime?      @map("confirmed_at")
   lockedAt     DateTime?      @map("locked_at")
-  supersededAt DateTime?      @map("superseded_at")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  supersededAt     DateTime?      @map("superseded_at")
+  counterpartyNote String?        @map("counterparty_note")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
 
   program         Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
   sourceFile      Evidence?        @relation("BaselineSource", fields: [sourceFileId], references: [id])
@@ -321,9 +326,10 @@ model Change {
   confirmationMode   ConfirmationMode? @map("confirmation_mode")
   evidenceFileId     String?           @map("evidence_file_id") @db.Uuid
   releasedAt         DateTime?         @map("released_at")
-  confirmedAt     DateTime?      @map("confirmed_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  confirmedAt        DateTime?         @map("confirmed_at")
+  counterpartyNote   String?           @map("counterparty_note")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
 
   program      Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
   baseline     Baseline? @relation(fields: [baselineId], references: [id])

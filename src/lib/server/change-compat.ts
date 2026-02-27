@@ -32,6 +32,7 @@ export const CHANGE_EXTENDED_SELECT = {
   reasonCode: true,
   scheduleImpactDays: true,
   confirmationMode: true,
+  counterpartyNote: true,
 } as const;
 
 /**

@@ -47,29 +47,93 @@ export async function POST(
     if (!link) return NextResponse.json({ error: "Invalid or expired link" }, { status: 404 });
     if (link.confirmedAt) return NextResponse.json({ error: "Already confirmed" }, { status: 400 });
 
-    const confirmed = await confirmMagicLink(link.id, getClientIp(req.headers));
+    // Parse the action from the request body (defaults to "confirm" for backwards compat)
+    let action: "confirm" | "counter" = "confirm";
+    let note: string | undefined;
+    try {
+      const body = await req.json();
+      if (body.action === "counter") action = "counter";
+      if (typeof body.note === "string" && body.note.trim()) {
+        note = body.note.trim().slice(0, 2000);
+      }
+    } catch {
+      // No body or invalid JSON — default to confirm
+    }
 
-    // Trigger state transition based on scope
+    // Counter requires a note
+    if (action === "counter" && !note) {
+      return NextResponse.json({ error: "A note is required when countering" }, { status: 400 });
+    }
+
+    const ipAddress = getClientIp(req.headers);
+
+    if (action === "counter") {
+      // --- COUNTER flow: set status to COUNTERED and save note ---
+      if (link.scope === "BASELINE_CONFIRM") {
+        const baseline = await prisma.baseline.findUnique({ where: { id: link.entityId } });
+        if (baseline && baseline.status === "RELEASED") {
+          await prisma.baseline.update({
+            where: { id: link.entityId },
+            data: { status: "COUNTERED", counterpartyNote: note },
+          });
+          await logEvent({
+            programId: baseline.programId, action: "BASELINE_COUNTERED",
+            entityType: "Baseline", entityId: baseline.id,
+            metadata: { counterpartyNote: note ?? "", viaMagicLink: true },
+            ipAddress,
+          });
+        }
+      } else if (link.scope === "CHANGE_CONFIRM") {
+        const change = await prisma.change.findUnique({ where: { id: link.entityId }, select: CHANGE_BASE_SELECT });
+        if (change && change.status === "RELEASED") {
+          await prisma.change.update({
+            where: { id: link.entityId },
+            data: { status: "COUNTERED", counterpartyNote: note },
+          });
+          await logEvent({
+            programId: change.programId, action: "CHANGE_COUNTERED",
+            entityType: "Change", entityId: change.id,
+            metadata: { counterpartyNote: note ?? "", viaMagicLink: true },
+            ipAddress,
+          });
+        }
+      }
+
+      // Mark the magic link as used (confirmed) so it can't be reused
+      await confirmMagicLink(link.id, ipAddress);
+
+      return NextResponse.json({ countered: true });
+    }
+
+    // --- CONFIRM flow (existing behavior) ---
+    const confirmed = await confirmMagicLink(link.id, ipAddress);
+
     if (confirmed.scope === "BASELINE_CONFIRM") {
       const baseline = await prisma.baseline.findUnique({ where: { id: confirmed.entityId } });
-      if (baseline && baseline.status === "RELEASED") {
-        await prisma.baseline.update({ where: { id: confirmed.entityId }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+      if (baseline && (baseline.status === "RELEASED" || baseline.status === "COUNTERED")) {
+        await prisma.baseline.update({
+          where: { id: confirmed.entityId },
+          data: { status: "CONFIRMED", confirmedAt: new Date(), ...(note ? { counterpartyNote: note } : {}) },
+        });
         await logEvent({
           programId: baseline.programId, action: "BASELINE_CONFIRMED",
           entityType: "Baseline", entityId: baseline.id,
-          metadata: { confirmedViaMagicLink: true },
-          ipAddress: getClientIp(req.headers),
+          metadata: { confirmedViaMagicLink: true, ...(note ? { counterpartyNote: note } : {}) },
+          ipAddress,
         });
       }
     } else if (confirmed.scope === "CHANGE_CONFIRM") {
       const change = await prisma.change.findUnique({ where: { id: confirmed.entityId }, select: CHANGE_BASE_SELECT });
-      if (change && change.status === "RELEASED") {
-        await prisma.change.update({ where: { id: confirmed.entityId }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+      if (change && (change.status === "RELEASED" || change.status === "COUNTERED")) {
+        await prisma.change.update({
+          where: { id: confirmed.entityId },
+          data: { status: "CONFIRMED", confirmedAt: new Date(), ...(note ? { counterpartyNote: note } : {}) },
+        });
         await logEvent({
           programId: change.programId, action: "CHANGE_CONFIRMED",
           entityType: "Change", entityId: change.id,
-          metadata: { confirmedViaMagicLink: true },
-          ipAddress: getClientIp(req.headers),
+          metadata: { confirmedViaMagicLink: true, ...(note ? { counterpartyNote: note } : {}) },
+          ipAddress,
         });
       }
     }

@@ -45,7 +45,8 @@ export async function PATCH(
     if (status) {
       const transitions: Record<string, string[]> = {
         DRAFT: ["RELEASED"],
-        RELEASED: ["CONFIRMED"],
+        RELEASED: ["CONFIRMED", "COUNTERED"],
+        COUNTERED: ["RELEASED"],
         CONFIRMED: ["LOCKED"],
         LOCKED: ["SUPERSEDED"],
       };

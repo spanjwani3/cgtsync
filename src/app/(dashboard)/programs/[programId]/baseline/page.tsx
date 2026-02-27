@@ -27,6 +27,7 @@ interface Baseline {
   releasedAt: string | null;
   confirmedAt: string | null;
   lockedAt: string | null;
+  counterpartyNote: string | null;
   createdAt: string;
   clauses: Clause[];
   _count?: { clauses: number };
@@ -37,7 +38,7 @@ interface Baseline {
 const CATEGORY_MAP: Record<string, string> = {
   PRICING: "Deliverable", SCOPE: "Deliverable", TIMELINE: "Deliverable",
   QUALITY: "Assumption", REGULATORY: "Assumption",
-  PAYMENT_TERMS: "Exclusion", IP: "Exclusion",
+  PAYMENT_TERMS: "Assumption", IP: "Exclusion",
   OTHER: "Deliverable",
 };
 function getCategory(type: string) { return CATEGORY_MAP[type] ?? "Deliverable"; }
@@ -353,6 +354,9 @@ export default function BaselinePage() {
                 {selected.status === "RELEASED" && (
                   <button onClick={() => transitionStatus(selected.id, "CONFIRMED")} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">Confirm</button>
                 )}
+                {selected.status === "COUNTERED" && (
+                  <button onClick={() => transitionStatus(selected.id, "RELEASED")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">Re-release</button>
+                )}
                 {selected.status === "CONFIRMED" && (
                   <button onClick={() => transitionStatus(selected.id, "LOCKED")} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500">Lock</button>
                 )}
@@ -361,6 +365,14 @@ export default function BaselinePage() {
                 )}
               </div>
             </div>
+
+            {/* Counterparty note */}
+            {selected.counterpartyNote && selected.status === "COUNTERED" && (
+              <div className="card border-amber-200 bg-amber-50">
+                <p className="text-xs font-semibold text-amber-600 uppercase">Counterparty Note</p>
+                <p className="mt-1 text-sm text-amber-800 whitespace-pre-line">{selected.counterpartyNote}</p>
+              </div>
+            )}
 
             {/* Tabs */}
             <div className="flex items-center gap-1 border-b border-card-border">
@@ -570,16 +582,24 @@ function TruthItemCard({ clause, index, programId, isDraft, isReleased, reviewSt
 
       {/* Per-item action buttons */}
       {isDraft && (
-        <div className="flex flex-shrink-0 items-center gap-1">
-          <button onClick={onAccept} title={isAccepted ? "Undo accept" : "Accept"}
-            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-              isAccepted ? "bg-green-100 text-green-600" : "text-zinc-400 hover:bg-green-50 hover:text-green-600"
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <button onClick={onAccept}
+            className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              isAccepted
+                ? "bg-green-100 text-green-700 border border-green-200"
+                : "bg-zinc-100 text-zinc-600 hover:bg-green-50 hover:text-green-700"
             }`}>
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+            {isAccepted ? "Accepted" : "Accept"}
           </button>
-          <button onClick={onReject} title="Reject (remove)"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-50 hover:text-red-600">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          <button onClick={() => {
+            if (window.confirm(`Remove "${clause.title}" from this baseline? This cannot be undone.`)) {
+              onReject();
+            }
+          }} title="Remove from baseline"
+            className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 hover:bg-red-50 hover:text-red-600 transition-colors">
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            Remove
           </button>
           <button onClick={onEdit} title="Edit"
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
