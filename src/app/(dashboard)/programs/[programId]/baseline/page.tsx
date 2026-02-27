@@ -213,6 +213,13 @@ export default function BaselinePage() {
     });
   }
 
+  function acceptAll() {
+    if (!selected) return;
+    const all: Record<string, "accepted"> = {};
+    for (const c of selected.clauses) all[c.id] = "accepted";
+    setClauseReview(all);
+  }
+
   async function rejectClause(clauseId: string) {
     setClauseReview((prev) => {
       const copy = { ...prev };
@@ -236,18 +243,15 @@ export default function BaselinePage() {
 
   async function saveEdit() {
     if (!editingClause || !selected) return;
-    // Delete old + re-create with new values (API doesn't have PATCH for clauses)
-    await deleteClause(editingClause.id);
     await fetch(`/api/baselines/${selected.id}/clauses`, {
-      method: "POST",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        type: editingClause.type,
+        clauseId: editingClause.id,
         title: editForm.title,
-        description: editForm.description || undefined,
-        value: editForm.value ? parseFloat(editForm.value) : undefined,
-        unit: editForm.unit || undefined,
-        clauseRef: editingClause.clauseRef || undefined,
+        description: editForm.description || null,
+        value: editForm.value ? parseFloat(editForm.value) : null,
+        unit: editForm.unit || null,
       }),
     });
     setEditingClause(null);
@@ -395,6 +399,12 @@ export default function BaselinePage() {
               </div>
               {selected.status === "DRAFT" && (
                 <>
+                  {clauses.length > 0 && (
+                    <button onClick={acceptAll} className="btn-secondary">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                      Accept All
+                    </button>
+                  )}
                   <button onClick={() => setShowAddClause(true)} className="btn-secondary">
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                     Add Item

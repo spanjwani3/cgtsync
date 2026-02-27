@@ -79,7 +79,7 @@ function buildReconciliationPrompt(
               `- ID:${c.id} Ref:${c.clauseRef ?? "N/A"} "${c.title}" — Value: ${c.value ?? "N/A"} ${c.unit ?? ""} (Type: ${c.type})`,
           )
           .join("\n")
-      : "(No baseline clauses available)";
+      : "(No locked baseline clauses found — lock a baseline before reconciling invoices)";
 
   const changesBlock =
     changes.length > 0

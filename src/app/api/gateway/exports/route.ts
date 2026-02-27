@@ -4,6 +4,7 @@ import { OrgRole, ExportType } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generatePdf } from "@/lib/server/pdf";
+import { generateDisputePdf } from "@/lib/server/dispute-pdf";
 import { uploadEvidence, getSignedUrl } from "@/lib/server/storage";
 import { v4 as uuidv4 } from "uuid";
 import { CHANGE_BASE_SELECT, CHANGE_INCLUDE_SELECT } from "@/lib/server/change-compat";
@@ -26,13 +27,61 @@ export async function POST(req: NextRequest) {
     const program = await prisma.program.findUnique({ where: { id: programId } });
     if (!program) return NextResponse.json({ error: "Program not found" }, { status: 404 });
 
-    const sections = await buildExportSections(programId, type as ExportType);
-    const { buffer, sha256Hash } = await generatePdf({
-      title: getExportTitle(type as ExportType),
-      subtitle: `${program.name} — ${program.cdmoName}`,
-      generatedBy: auth.email,
-      sections,
-    });
+    let buffer: Buffer;
+    let sha256Hash: string;
+
+    if (type === "DISPUTE_PACKET") {
+      // Use the rich forensic dispute PDF generator
+      const invoice = await prisma.invoice.findFirst({
+        where: { programId, lineItems: { some: { flag: { not: "NONE" } } } },
+        include: {
+          lineItems: {
+            where: { flag: { not: "NONE" } },
+            include: { clause: true, change: CHANGE_INCLUDE_SELECT },
+            orderBy: { sortOrder: "asc" },
+          },
+          program: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!invoice || invoice.lineItems.length === 0) {
+        return NextResponse.json({ error: "No flagged line items found for dispute packet" }, { status: 400 });
+      }
+      const result = await generateDisputePdf({
+        programName: program.name,
+        cdmoName: program.cdmoName,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceDate: invoice.invoiceDate,
+        vendorName: invoice.vendorName,
+        currency: invoice.currency,
+        totalAmount: invoice.totalAmount ? Number(invoice.totalAmount) : null,
+        generatedBy: auth.email,
+        flaggedItems: invoice.lineItems.map((li) => ({
+          description: li.description,
+          amount: Number(li.amount),
+          flag: li.flag,
+          flagNote: li.flagNote,
+          clause: li.clause
+            ? { clauseRef: li.clause.clauseRef, title: li.clause.title, type: li.clause.type, value: li.clause.value ? Number(li.clause.value) : null }
+            : null,
+          change: li.change
+            ? { sequenceNum: li.change.sequenceNum, title: li.change.title, status: li.change.status, estimatedImpact: li.change.estimatedImpact ? Number(li.change.estimatedImpact) : null }
+            : null,
+        })),
+      });
+      buffer = result.buffer;
+      sha256Hash = result.sha256Hash;
+    } else {
+      const sections = await buildExportSections(programId, type as ExportType);
+      const result = await generatePdf({
+        title: getExportTitle(type as ExportType),
+        subtitle: `${program.name} — ${program.cdmoName}`,
+        generatedBy: auth.email,
+        sections,
+      });
+      buffer = result.buffer;
+      sha256Hash = result.sha256Hash;
+    }
 
     const fileName = `${type.toLowerCase()}_${Date.now()}.pdf`;
     const storagePath = `${programId}/exports/${uuidv4()}/${fileName}`;

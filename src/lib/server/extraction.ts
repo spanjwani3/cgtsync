@@ -202,14 +202,31 @@ For EVERY extracted item/row, you MUST include:
 - "page": The page number where this item appears (integer, or null if unknown).
 - "confidence": Your confidence in this extraction from 0.0 to 1.0 (e.g., 0.95 for clear text, 0.6 for inferred).`;
 
-const BASELINE_PROMPT = `You are an expert contract analyst for biopharma outsourcing agreements. Extract all contract clauses/terms from this document.
+const BASELINE_PROMPT = `You are an expert contract analyst for biopharma outsourcing agreements. Extract ONLY the invoice-relevant terms from this document — the items a finance team would use to verify and reconcile invoices.
 
-For each clause, provide:
+FOCUS ON extracting:
+- PRICING: Every distinct cost, fee, rate, or price (manufacturing costs, testing fees, storage charges, pass-through costs, etc.)
+- PAYMENT_TERMS: Payment schedules, net terms, milestone payments, invoicing frequency
+- TIMELINE: Key delivery timelines and lead times that affect payment milestones
+- SCOPE: Core deliverables that have associated costs (e.g., "10 batches per year", "stability testing included")
+
+DO NOT extract:
+- Legal/boilerplate clauses (indemnification, liability caps, limitation of liability, warranties)
+- IP ownership, confidentiality, or data protection clauses
+- Governing law, jurisdiction, or dispute resolution
+- Force majeure, termination, or assignment clauses
+- Insurance requirements, representations, or general obligations
+- Regulatory compliance clauses (unless they specify billable activities with costs)
+Exception: Include any of the above ONLY if they contain a specific dollar amount or payment obligation.
+
+A typical SOW/WO should produce 8-20 baseline items. Focus on quality over quantity.
+
+For each item, provide:
 - clauseRef: The section/clause reference number (e.g., "3.1", "Schedule A, Item 2")
-- type: One of PRICING, TIMELINE, SCOPE, QUALITY, REGULATORY, PAYMENT_TERMS, IP, OTHER
-- title: Short descriptive title (e.g., "API manufacturing price per kg")
+- type: One of PRICING, TIMELINE, SCOPE, PAYMENT_TERMS
+- title: Short descriptive title (e.g., "API manufacturing price per batch")
 - description: Full text or summary of the clause
-- value: Numeric value — REQUIRED for PRICING, TIMELINE, and PAYMENT_TERMS clauses. Extract the primary dollar amount, duration, or numeric term. Use null ONLY if the clause is purely descriptive with no numbers at all.
+- value: Numeric value — REQUIRED for PRICING, TIMELINE, and PAYMENT_TERMS. Extract the primary dollar amount, duration, or numeric term. Use null ONLY if the clause is purely descriptive with no numbers at all.
 - unit: Unit for the value (e.g., "USD", "USD/batch", "USD/kg", "days", "weeks", "kg"). REQUIRED whenever value is set.
 ${PROVENANCE_INSTRUCTION}
 
@@ -265,7 +282,7 @@ Return a JSON object with this exact structure:
   "summary": "Brief 1-2 sentence summary of the document"
 }
 
-Extract ALL identifiable terms. Be thorough — especially pricing, payment terms, and timeline clauses which MUST have numeric values. Return ONLY valid JSON, no markdown fences.`;
+Focus on terms that would appear as line items on an invoice or that define payment obligations. Quality over quantity. Return ONLY valid JSON, no markdown fences.`;
 
 const INVOICE_PROMPT = `You are an expert invoice analyst for biopharma outsourcing. Extract the invoice header and all line items from this document.
 ${PROVENANCE_INSTRUCTION}
