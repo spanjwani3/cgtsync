@@ -50,7 +50,7 @@ let _migrationApplied: boolean | null = null;
 export async function hasChangeExtendedColumns(prisma: { $queryRawUnsafe: (q: string) => Promise<unknown> }): Promise<boolean> {
   if (_migrationApplied !== null) return _migrationApplied;
   try {
-    await prisma.$queryRawUnsafe("SELECT reason_code FROM changes LIMIT 0");
+    await prisma.$queryRawUnsafe("SELECT reason_code, counterparty_note FROM changes LIMIT 0");
     _migrationApplied = true;
   } catch {
     _migrationApplied = false;

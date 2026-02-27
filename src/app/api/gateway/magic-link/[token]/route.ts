@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateMagicLink, recordMagicLinkView, confirmMagicLink } from "@/lib/server/magic-link";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
-import { getChangeSelect, CHANGE_BASE_SELECT } from "@/lib/server/change-compat";
+import { getChangeSelect, CHANGE_BASE_SELECT, hasChangeExtendedColumns } from "@/lib/server/change-compat";
 
 export async function GET(
   req: NextRequest,
@@ -20,7 +20,12 @@ export async function GET(
     if (link.scope === "BASELINE_CONFIRM") {
       entity = await prisma.baseline.findUnique({
         where: { id: link.entityId },
-        include: { clauses: { orderBy: { sortOrder: "asc" } }, program: { select: { name: true, cdmoName: true } } },
+        select: {
+          id: true, title: true, version: true, status: true, programId: true,
+          releasedAt: true, confirmedAt: true,
+          clauses: { orderBy: { sortOrder: "asc" } },
+          program: { select: { name: true, cdmoName: true } },
+        },
       });
     } else if (link.scope === "CHANGE_CONFIRM") {
       const changeSelect = await getChangeSelect(prisma);
@@ -66,8 +71,17 @@ export async function POST(
     }
 
     const ipAddress = getClientIp(req.headers);
+    const migrationApplied = await hasChangeExtendedColumns(prisma);
 
     if (action === "counter") {
+      // Counter requires COUNTERED enum + counterparty_note column (from migration)
+      if (!migrationApplied) {
+        return NextResponse.json(
+          { error: "Counter is not available yet. Please run the latest database migration." },
+          { status: 503 },
+        );
+      }
+
       // --- COUNTER flow: set status to COUNTERED and save note ---
       if (link.scope === "BASELINE_CONFIRM") {
         const baseline = await prisma.baseline.findUnique({ where: { id: link.entityId }, select: { id: true, programId: true, status: true } });
@@ -110,12 +124,15 @@ export async function POST(
     // --- CONFIRM flow (existing behavior) ---
     const confirmed = await confirmMagicLink(link.id, ipAddress);
 
+    // Only include counterpartyNote in data if migration has been applied
+    const noteData = (note && migrationApplied) ? { counterpartyNote: note } : {};
+
     if (confirmed.scope === "BASELINE_CONFIRM") {
       const baseline = await prisma.baseline.findUnique({ where: { id: confirmed.entityId }, select: { id: true, programId: true, status: true } });
       if (baseline && (baseline.status === "RELEASED" || baseline.status === "COUNTERED")) {
         await prisma.baseline.update({
           where: { id: confirmed.entityId },
-          data: { status: "CONFIRMED", confirmedAt: new Date(), ...(note ? { counterpartyNote: note } : {}) },
+          data: { status: "CONFIRMED", confirmedAt: new Date(), ...noteData },
           select: { id: true },
         });
         await logEvent({
@@ -130,7 +147,7 @@ export async function POST(
       if (change && (change.status === "RELEASED" || change.status === "COUNTERED")) {
         await prisma.change.update({
           where: { id: confirmed.entityId },
-          data: { status: "CONFIRMED", confirmedAt: new Date(), ...(note ? { counterpartyNote: note } : {}) },
+          data: { status: "CONFIRMED", confirmedAt: new Date(), ...noteData },
           select: CHANGE_BASE_SELECT,
         });
         await logEvent({
