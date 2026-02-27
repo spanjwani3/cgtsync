@@ -13,7 +13,10 @@ export async function GET(
     const link = await validateMagicLink(token);
     if (!link) return NextResponse.json({ error: "Invalid or expired link" }, { status: 404 });
 
-    await recordMagicLinkView(link.id, getClientIp(req.headers));
+    // Record view in background — don't let it block or fail the response
+    recordMagicLinkView(link.id, getClientIp(req.headers)).catch((e) =>
+      console.error("recordMagicLinkView error (non-blocking):", e)
+    );
 
     // Return the entity data based on scope
     let entity = null;
@@ -28,11 +31,20 @@ export async function GET(
         },
       });
     } else if (link.scope === "CHANGE_CONFIRM") {
-      const changeSelect = await getChangeSelect(prisma);
-      entity = await prisma.change.findUnique({
-        where: { id: link.entityId },
-        select: { ...changeSelect, program: { select: { name: true, cdmoName: true } } },
-      });
+      // Try detected select; fall back to base select if the query fails
+      try {
+        const changeSelect = await getChangeSelect(prisma);
+        entity = await prisma.change.findUnique({
+          where: { id: link.entityId },
+          select: { ...changeSelect, program: { select: { name: true, cdmoName: true } } },
+        });
+      } catch (selectErr) {
+        console.error("Change extended select failed, falling back to base:", selectErr);
+        entity = await prisma.change.findUnique({
+          where: { id: link.entityId },
+          select: { ...CHANGE_BASE_SELECT, program: { select: { name: true, cdmoName: true } } },
+        });
+      }
     }
 
     return NextResponse.json({ link: { id: link.id, scope: link.scope, expiresAt: link.expiresAt, singleUse: link.singleUse, confirmedAt: link.confirmedAt }, entity });
