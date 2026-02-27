@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN")
       return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
+    console.error("[GET /api/gateway/evidence] Unhandled error:", e);
     return NextResponse.json(
       { requestId, error: "Internal server error" },
       { status: 500 }

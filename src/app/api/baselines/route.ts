@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    console.error("[GET /api/baselines] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    console.error("[POST /api/baselines] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

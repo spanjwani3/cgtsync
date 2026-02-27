@@ -22,6 +22,7 @@ export async function GET(
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    console.error("[GET /api/baselines/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -83,6 +84,7 @@ export async function PATCH(
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    console.error("[PATCH /api/baselines/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    console.error("[GET /api/programs] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
     if (message === "FORBIDDEN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    console.error("[POST /api/programs] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
