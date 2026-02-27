@@ -111,12 +111,12 @@ export async function POST(
           });
         }
       } else if (link.scope === "CHANGE_CONFIRM") {
-        const change = await prisma.change.findUnique({ where: { id: link.entityId }, select: CHANGE_BASE_SELECT });
+        const change = await prisma.change.findUnique({ where: { id: link.entityId }, select: { id: true, programId: true, status: true } });
         if (change && change.status === "RELEASED") {
           await prisma.change.update({
             where: { id: link.entityId },
             data: { status: "COUNTERED", counterpartyNote: note },
-            select: CHANGE_BASE_SELECT,
+            select: { id: true },
           });
           await logEvent({
             programId: change.programId, action: "CHANGE_COUNTERED",
@@ -155,12 +155,12 @@ export async function POST(
         });
       }
     } else if (confirmed.scope === "CHANGE_CONFIRM") {
-      const change = await prisma.change.findUnique({ where: { id: confirmed.entityId }, select: CHANGE_BASE_SELECT });
+      const change = await prisma.change.findUnique({ where: { id: confirmed.entityId }, select: { id: true, programId: true, status: true } });
       if (change && (change.status === "RELEASED" || change.status === "COUNTERED")) {
         await prisma.change.update({
           where: { id: confirmed.entityId },
           data: { status: "CONFIRMED", confirmedAt: new Date(), ...noteData },
-          select: CHANGE_BASE_SELECT,
+          select: { id: true },
         });
         await logEvent({
           programId: change.programId, action: "CHANGE_CONFIRMED",
