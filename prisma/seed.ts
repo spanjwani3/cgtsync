@@ -18,11 +18,23 @@ const prisma = new PrismaClient();
 async function main() {
   const userEmail = process.env.SEED_USER_EMAIL ?? "spanjwani3@gmail.com";
 
-  // Resolve user ID: env var > existing DB user > placeholder
+  // Resolve user ID: env var > existing DB user > real Supabase UID
   let userId = process.env.SEED_USER_ID;
   if (!userId) {
     const existing = await prisma.user.findUnique({ where: { email: userEmail } });
-    userId = existing?.id ?? "00000000-0000-0000-0000-000000000001";
+    userId = existing?.id ?? "bad8c2dd-3ca2-43e9-871d-1ea363574306";
+  }
+
+  // Idempotency guard: skip if demo data already exists
+  const existingOrg = await prisma.organization.findUnique({ where: { slug: "acme-bio" } });
+  if (existingOrg) {
+    const existingProgram = await prisma.program.findFirst({
+      where: { orgId: existingOrg.id, name: "CAR-T Manufacturing — Phase II" },
+    });
+    if (existingProgram) {
+      console.log("Demo data already seeded, skipping.");
+      return;
+    }
   }
 
   console.log("Seeding CGT-Sync demo data...\n");
