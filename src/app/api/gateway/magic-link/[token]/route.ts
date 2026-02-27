@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateMagicLink, recordMagicLinkView, confirmMagicLink } from "@/lib/server/magic-link";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
-import { getChangeSelect, CHANGE_BASE_SELECT, hasChangeExtendedColumns } from "@/lib/server/change-compat";
+import { CHANGE_EXTENDED_SELECT, hasChangeExtendedColumns } from "@/lib/server/change-compat";
 
 export async function GET(
   req: NextRequest,
@@ -31,20 +31,10 @@ export async function GET(
         },
       });
     } else if (link.scope === "CHANGE_CONFIRM") {
-      // Try detected select; fall back to base select if the query fails
-      try {
-        const changeSelect = await getChangeSelect(prisma);
-        entity = await prisma.change.findUnique({
-          where: { id: link.entityId },
-          select: { ...changeSelect, program: { select: { name: true, cdmoName: true } } },
-        });
-      } catch (selectErr) {
-        console.error("Change extended select failed, falling back to base:", selectErr);
-        entity = await prisma.change.findUnique({
-          where: { id: link.entityId },
-          select: { ...CHANGE_BASE_SELECT, program: { select: { name: true, cdmoName: true } } },
-        });
-      }
+      entity = await prisma.change.findUnique({
+        where: { id: link.entityId },
+        select: { ...CHANGE_EXTENDED_SELECT, program: { select: { name: true, cdmoName: true } } },
+      });
     }
 
     return NextResponse.json({ link: { id: link.id, scope: link.scope, expiresAt: link.expiresAt, singleUse: link.singleUse, confirmedAt: link.confirmedAt }, entity });
