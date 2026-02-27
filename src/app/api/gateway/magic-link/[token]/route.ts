@@ -113,11 +113,11 @@ export async function POST(
       } else if (link.scope === "CHANGE_CONFIRM") {
         const change = await prisma.change.findUnique({ where: { id: link.entityId }, select: { id: true, programId: true, status: true } });
         if (change && change.status === "RELEASED") {
-          await prisma.change.update({
-            where: { id: link.entityId },
-            data: { status: "COUNTERED", counterpartyNote: note },
-            select: { id: true },
-          });
+          // Raw SQL to bypass Prisma model-aware SQL that references non-existent columns
+          await prisma.$executeRawUnsafe(
+            `UPDATE "changes" SET "status" = 'COUNTERED'::"ChangeStatus", "counterparty_note" = $1, "updated_at" = NOW() WHERE "id" = $2::uuid`,
+            note, link.entityId
+          );
           await logEvent({
             programId: change.programId, action: "CHANGE_COUNTERED",
             entityType: "Change", entityId: change.id,
@@ -157,11 +157,18 @@ export async function POST(
     } else if (confirmed.scope === "CHANGE_CONFIRM") {
       const change = await prisma.change.findUnique({ where: { id: confirmed.entityId }, select: { id: true, programId: true, status: true } });
       if (change && (change.status === "RELEASED" || change.status === "COUNTERED")) {
-        await prisma.change.update({
-          where: { id: confirmed.entityId },
-          data: { status: "CONFIRMED", confirmedAt: new Date(), ...noteData },
-          select: { id: true },
-        });
+        // Raw SQL to bypass Prisma model-aware SQL that references non-existent columns
+        if (note && migrationApplied) {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "changes" SET "status" = 'CONFIRMED'::"ChangeStatus", "confirmed_at" = NOW(), "counterparty_note" = $1, "updated_at" = NOW() WHERE "id" = $2::uuid AND "status" IN ('RELEASED', 'COUNTERED')`,
+            note, confirmed.entityId
+          );
+        } else {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "changes" SET "status" = 'CONFIRMED'::"ChangeStatus", "confirmed_at" = NOW(), "updated_at" = NOW() WHERE "id" = $1::uuid AND "status" IN ('RELEASED', 'COUNTERED')`,
+            confirmed.entityId
+          );
+        }
         await logEvent({
           programId: change.programId, action: "CHANGE_CONFIRMED",
           entityType: "Change", entityId: change.id,
