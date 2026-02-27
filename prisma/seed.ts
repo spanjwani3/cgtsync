@@ -16,8 +16,14 @@ import { PrismaClient } from "../src/generated/prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  const userId = process.env.SEED_USER_ID ?? "00000000-0000-0000-0000-000000000001";
-  const userEmail = process.env.SEED_USER_EMAIL ?? "demo@cgtsync.dev";
+  const userEmail = process.env.SEED_USER_EMAIL ?? "spanjwani3@gmail.com";
+
+  // Resolve user ID: env var > existing DB user > placeholder
+  let userId = process.env.SEED_USER_ID;
+  if (!userId) {
+    const existing = await prisma.user.findUnique({ where: { email: userEmail } });
+    userId = existing?.id ?? "00000000-0000-0000-0000-000000000001";
+  }
 
   console.log("Seeding CGT-Sync demo data...\n");
 
@@ -25,7 +31,7 @@ async function main() {
   const user = await prisma.user.upsert({
     where: { id: userId },
     update: {},
-    create: { id: userId, email: userEmail, fullName: "Demo User" },
+    create: { id: userId, email: userEmail, fullName: "Samir Panjwani" },
   });
   console.log(`  User: ${user.email} (${user.id})`);
 
