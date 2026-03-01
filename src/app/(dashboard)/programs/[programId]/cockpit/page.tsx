@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -16,7 +16,16 @@ interface Program {
   currency: string;
   changeThreshold: string | null;
   activatedAt: string | null;
+  assignedPmId: string | null;
+  assignedPm: { id: string; fullName: string | null; email: string } | null;
   _count: { baselines: number; changes: number; invoices: number; commitmentTerms: number };
+}
+
+interface OrgMember {
+  id: string;
+  fullName: string | null;
+  email: string;
+  role: string;
 }
 
 interface Baseline {
@@ -63,6 +72,10 @@ export default function CockpitPage() {
   const [flags, setFlags] = useState<RedFlag[]>([]);
   const [tasks, setTasks] = useState<SmartTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [pmDropdownOpen, setPmDropdownOpen] = useState(false);
+  const [savingPm, setSavingPm] = useState(false);
+  const pmDropdownRef = useRef<HTMLDivElement>(null);
 
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
 
@@ -126,6 +139,51 @@ export default function CockpitPage() {
   }, [programId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fetch org members for PM dropdown
+  useEffect(() => {
+    fetch("/api/org/members")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.members) setMembers(data.members); })
+      .catch(() => {});
+  }, []);
+
+  // Close PM dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (pmDropdownRef.current && !pmDropdownRef.current.contains(e.target as Node)) {
+        setPmDropdownOpen(false);
+      }
+    }
+    if (pmDropdownOpen) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [pmDropdownOpen]);
+
+  async function assignPm(memberId: string | null) {
+    setSavingPm(true);
+    setPmDropdownOpen(false);
+    try {
+      const res = await fetch(`/api/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedPmId: memberId }),
+      });
+      if (res.ok) {
+        await load();
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error ?? "Failed to assign PM");
+      }
+    } catch {
+      alert("Failed to assign PM");
+    }
+    setSavingPm(false);
+  }
+
+  function getInitials(name: string | null, email: string): string {
+    if (name) return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+    return email[0].toUpperCase();
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
@@ -221,9 +279,53 @@ export default function CockpitPage() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={program.status} />
-          <span className="rounded-lg bg-accent-light px-3 py-1.5 text-xs font-semibold text-accent-text">
-            Sponsor Owner
-          </span>
+          {/* PM Assignment Dropdown */}
+          <div className="relative" ref={pmDropdownRef}>
+            <button
+              onClick={() => setPmDropdownOpen((o) => !o)}
+              disabled={savingPm}
+              className="flex items-center gap-2 rounded-lg bg-accent-light px-3 py-1.5 text-xs font-semibold text-accent-text transition-colors hover:bg-accent-light/80"
+            >
+              {program.assignedPm ? (
+                <>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
+                    {getInitials(program.assignedPm.fullName, program.assignedPm.email)}
+                  </span>
+                  {program.assignedPm.fullName ?? program.assignedPm.email}
+                </>
+              ) : (
+                savingPm ? "Saving..." : "Assign PM"
+              )}
+              <svg className="h-3 w-3 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            {pmDropdownOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-card-border bg-white py-1 shadow-lg">
+                {program.assignedPm && (
+                  <button
+                    onClick={() => assignPm(null)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
+                  >
+                    Unassign PM
+                  </button>
+                )}
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => assignPm(m.id)}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-zinc-50 ${
+                      program.assignedPmId === m.id ? "bg-accent-light font-semibold text-accent-text" : "text-zinc-700"
+                    }`}
+                  >
+                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[9px] font-semibold text-zinc-600">
+                      {getInitials(m.fullName, m.email)}
+                    </span>
+                    <span className="truncate">{m.fullName ?? m.email}</span>
+                    {m.role === "ADMIN" && <span className="ml-auto text-[10px] text-zinc-400">Admin</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
