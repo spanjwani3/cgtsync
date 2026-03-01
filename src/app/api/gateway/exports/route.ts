@@ -146,6 +146,29 @@ function getExportTitle(type: ExportType): string {
   return titles[type] ?? "Export";
 }
 
+function fmtCurrency(n: unknown, currency: string): string {
+  if (n == null) return "N/A";
+  const num = Number(n);
+  if (isNaN(num)) return "N/A";
+  return `${currency} ${num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function fmtDate(d: Date | null | undefined): string {
+  if (!d) return "N/A";
+  return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+const FLAG_LABELS: Record<string, string> = {
+  RATE_MISMATCH: "Rate Mismatch",
+  SCOPE_CREEP: "Scope Creep",
+  UNAPPROVED_CHANGE: "Unapproved Change",
+  DUPLICATE: "Duplicate",
+  MISSING_BASELINE: "Missing Baseline",
+  ASSUMPTION_VIOLATION: "Assumption Violation",
+  OTHER: "Other",
+  NONE: "",
+};
+
 async function buildExportSections(programId: string, type: ExportType) {
   switch (type) {
     case "BASELINE_PACK": {
@@ -158,13 +181,25 @@ async function buildExportSections(programId: string, type: ExportType) {
         title: `Baseline v${b.version}: ${b.title} [${b.status}]`,
         rows: [
           { label: "Status:", value: b.status },
-          { label: "Created:", value: b.createdAt.toISOString() },
-          ...(b.lockedAt ? [{ label: "Locked:", value: b.lockedAt.toISOString() }] : []),
-          ...b.clauses.map((c) => ({
-            label: `  ${c.clauseRef ?? ""} [${c.type}]`,
-            value: `${c.title}${c.value ? ` — ${c.value} ${c.unit ?? ""}` : ""}`,
-          })),
+          { label: "Created:", value: fmtDate(b.createdAt) },
+          ...(b.lockedAt ? [{ label: "Locked:", value: fmtDate(b.lockedAt) }] : []),
         ],
+        table: {
+          headers: [
+            { label: "Clause Ref", width: 70 },
+            { label: "Type", width: 65 },
+            { label: "Title", width: 200 },
+            { label: "Value", width: 80, align: "right" as const },
+            { label: "Unit", width: 80 },
+          ],
+          rows: b.clauses.map((c) => [
+            c.clauseRef ?? "—",
+            c.type ?? "—",
+            c.title,
+            c.value != null ? Number(c.value).toLocaleString() : "—",
+            c.unit ?? "—",
+          ]),
+        },
       }));
     }
     case "CHANGE_LEDGER_PACK": {
@@ -176,10 +211,25 @@ async function buildExportSections(programId: string, type: ExportType) {
       return [
         {
           title: "Change Ledger",
-          rows: changes.map((c) => ({
-            label: `#${c.sequenceNum} [${c.severity}/${c.status}]`,
-            value: `${c.title}${c.estimatedImpact ? ` — Impact: ${c.estimatedImpact}` : ""}`,
-          })),
+          rows: [
+            { label: "Total Changes:", value: String(changes.length) },
+          ],
+          table: {
+            headers: [
+              { label: "#", width: 35 },
+              { label: "Title", width: 210 },
+              { label: "Severity", width: 70 },
+              { label: "Status", width: 80 },
+              { label: "Est. Impact", width: 100, align: "right" as const },
+            ],
+            rows: changes.map((c) => [
+              String(c.sequenceNum),
+              c.title,
+              c.severity,
+              c.status,
+              c.estimatedImpact != null ? Number(c.estimatedImpact).toLocaleString() : "—",
+            ]),
+          },
         },
       ];
     }
@@ -193,15 +243,27 @@ async function buildExportSections(programId: string, type: ExportType) {
         title: `Invoice: ${inv.invoiceNumber ?? "N/A"} [${inv.status}]`,
         rows: [
           { label: "Vendor:", value: inv.vendorName ?? "N/A" },
-          { label: "Total:", value: `${inv.currency} ${inv.totalAmount ?? "N/A"}` },
-          ...inv.lineItems.map((li) => ({
-            label: `  ${li.flag !== "NONE" ? `⚠ [${li.flag}]` : "  "} `,
-            value: `${li.description} — ${li.amount}`,
-          })),
+          { label: "Date:", value: fmtDate(inv.invoiceDate) },
+          { label: "Total:", value: fmtCurrency(inv.totalAmount, inv.currency) },
         ],
+        table: {
+          headers: [
+            { label: "Description", width: 195 },
+            { label: "Amount", width: 80, align: "right" as const },
+            { label: "Flag", width: 80 },
+            { label: "Clause Ref", width: 140 },
+          ],
+          rows: inv.lineItems.map((li) => [
+            li.description.length > 50 ? li.description.slice(0, 50) + "..." : li.description,
+            fmtCurrency(li.amount, inv.currency),
+            FLAG_LABELS[li.flag] ?? li.flag,
+            li.clause?.clauseRef ?? li.clause?.title ?? "—",
+          ]),
+        },
       }));
     }
     case "DISPUTE_PACKET": {
+      // This path is a fallback — the rich generateDisputePdf is used above
       const flaggedItems = await prisma.invoiceLineItem.findMany({
         where: { invoice: { programId }, flag: { not: "NONE" } },
         include: { invoice: true, clause: true, change: CHANGE_INCLUDE_SELECT },
@@ -210,10 +272,22 @@ async function buildExportSections(programId: string, type: ExportType) {
       return [
         {
           title: "Disputed Line Items",
-          rows: flaggedItems.map((li) => ({
-            label: `[${li.flag}] Invoice ${li.invoice.invoiceNumber ?? li.invoiceId}:`,
-            value: `${li.description} — ${li.amount}${li.flagNote ? ` (${li.flagNote})` : ""}`,
-          })),
+          table: {
+            headers: [
+              { label: "Flag", width: 80 },
+              { label: "Description", width: 195 },
+              { label: "Amount", width: 80, align: "right" as const },
+              { label: "Invoice #", width: 80 },
+              { label: "Note", width: 60 },
+            ],
+            rows: flaggedItems.map((li) => [
+              FLAG_LABELS[li.flag] ?? li.flag,
+              li.description.length > 50 ? li.description.slice(0, 50) + "..." : li.description,
+              Number(li.amount).toLocaleString(),
+              li.invoice.invoiceNumber ?? "N/A",
+              li.flagNote ?? "—",
+            ]),
+          },
         },
       ];
     }
@@ -231,22 +305,44 @@ async function buildExportSections(programId: string, type: ExportType) {
       });
       return [
         {
-          title: "Recent Changes (7 days)",
-          rows: recentChanges.length > 0
-            ? recentChanges.map((c) => ({
-                label: `#${c.sequenceNum} [${c.status}]`,
-                value: c.title,
-              }))
-            : [{ label: "", value: "No changes in the last 7 days" }],
+          title: `Recent Changes (Last 7 Days)`,
+          rows: recentChanges.length === 0 ? [{ label: "", value: "No changes in the last 7 days" }] : undefined,
+          table: recentChanges.length > 0
+            ? {
+                headers: [
+                  { label: "#", width: 35 },
+                  { label: "Title", width: 280 },
+                  { label: "Status", width: 80 },
+                  { label: "Date", width: 100 },
+                ],
+                rows: recentChanges.map((c) => [
+                  String(c.sequenceNum),
+                  c.title,
+                  c.status,
+                  fmtDate(c.createdAt),
+                ]),
+              }
+            : undefined,
         },
         {
-          title: "Recent Flags (7 days)",
-          rows: recentFlags.length > 0
-            ? recentFlags.map((li) => ({
-                label: `[${li.flag}]`,
-                value: `${li.description} — Invoice ${li.invoice.invoiceNumber ?? li.invoiceId}`,
-              }))
-            : [{ label: "", value: "No flags in the last 7 days" }],
+          title: `Recent Flags (Last 7 Days)`,
+          rows: recentFlags.length === 0 ? [{ label: "", value: "No flags in the last 7 days" }] : undefined,
+          table: recentFlags.length > 0
+            ? {
+                headers: [
+                  { label: "Flag", width: 80 },
+                  { label: "Description", width: 215 },
+                  { label: "Invoice #", width: 100 },
+                  { label: "Date", width: 100 },
+                ],
+                rows: recentFlags.map((li) => [
+                  FLAG_LABELS[li.flag] ?? li.flag,
+                  li.description.length > 55 ? li.description.slice(0, 55) + "..." : li.description,
+                  li.invoice.invoiceNumber ?? "N/A",
+                  fmtDate(li.createdAt),
+                ]),
+              }
+            : undefined,
         },
       ];
     }
