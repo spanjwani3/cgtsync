@@ -18,8 +18,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 404 });
     }
 
+    const assignedPmId = req.nextUrl.searchParams.get("assignedPmId");
+    const where: Record<string, unknown> = { orgId: membership.orgId };
+    if (assignedPmId) where.assignedPmId = assignedPmId;
+
     const programs = await prisma.program.findMany({
-      where: { orgId: membership.orgId },
+      where,
+      include: {
+        assignedPm: { select: { id: true, fullName: true, email: true } },
+        _count: { select: { baselines: true, changes: true, invoices: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -38,7 +46,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth();
     const body = await req.json();
-    const { name, cdmoName, molecule, modality, description, currency, changeThreshold } = body;
+    const { name, cdmoName, molecule, modality, description, currency, changeThreshold, assignedPmId } = body;
 
     if (!name || !cdmoName) {
       return NextResponse.json(
@@ -72,6 +80,7 @@ export async function POST(req: NextRequest) {
         description: description ?? null,
         currency: currency ?? "USD",
         changeThreshold: changeThreshold ?? null,
+        assignedPmId: assignedPmId ?? null,
       },
     });
 

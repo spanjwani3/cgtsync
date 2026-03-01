@@ -27,6 +27,24 @@ export async function POST(req: NextRequest) {
     const program = await prisma.program.findUnique({ where: { id: programId } });
     if (!program) return NextResponse.json({ error: "Program not found" }, { status: 404 });
 
+    const org = await prisma.organization.findUnique({
+      where: { id: program.orgId },
+      select: { name: true, logoUrl: true },
+    });
+
+    let logoBuffer: Buffer | undefined;
+    if (org?.logoUrl) {
+      try {
+        const signedLogoUrl = await getSignedUrl(org.logoUrl);
+        const logoRes = await fetch(signedLogoUrl);
+        if (logoRes.ok) {
+          logoBuffer = Buffer.from(await logoRes.arrayBuffer());
+        }
+      } catch {
+        // proceed without logo
+      }
+    }
+
     let buffer: Buffer;
     let sha256Hash: string;
 
@@ -56,6 +74,8 @@ export async function POST(req: NextRequest) {
         currency: invoice.currency,
         totalAmount: invoice.totalAmount ? Number(invoice.totalAmount) : null,
         generatedBy: auth.email,
+        orgName: org?.name,
+        logoBuffer,
         flaggedItems: invoice.lineItems.map((li) => ({
           description: li.description,
           amount: Number(li.amount),
@@ -78,6 +98,8 @@ export async function POST(req: NextRequest) {
         subtitle: `${program.name} — ${program.cdmoName}`,
         generatedBy: auth.email,
         sections,
+        orgName: org?.name,
+        logoBuffer,
       });
       buffer = result.buffer;
       sha256Hash = result.sha256Hash;

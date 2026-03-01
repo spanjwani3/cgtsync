@@ -150,6 +150,10 @@ enum EventAction {
   TERM_CREATED
   TERM_UPDATED
   TERM_IMPORTED
+  // Evidence backloading
+  EVIDENCE_BACKLOADED
+  // CSV/Excel bulk import
+  BULK_IMPORT
 }
 
 enum MagicLinkScope {
@@ -181,6 +185,12 @@ enum ExtractionTargetType {
   TERMS
 }
 
+enum ImportTargetType {
+  INVOICE
+  BASELINE
+  CONTRACT
+}
+
 enum TermType {
   RESERVATION_FEE
   COMMITMENT_DATE
@@ -200,9 +210,10 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  memberships  OrgMember[]
-  eventLogs    EventLog[]
-  magicLinks   MagicLink[]   @relation("CreatedByUser")
+  memberships      OrgMember[]
+  eventLogs        EventLog[]
+  magicLinks       MagicLink[]   @relation("CreatedByUser")
+  assignedPrograms Program[]     @relation("AssignedPrograms")
 
   @@map("users")
 }
@@ -214,8 +225,10 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  members   OrgMember[]
-  programs  Program[]
+  members        OrgMember[]
+  programs       Program[]
+  logoUrl        String?          @map("logo_url")
+  importMappings ImportMapping[]
 
   @@map("organizations")
 }
@@ -248,10 +261,12 @@ model Program {
   retentionDays   Int?          @map("retention_days")
   activatedAt     DateTime?     @map("activated_at")
   changeThreshold Decimal?      @map("change_threshold") @db.Decimal(14, 2)
+  assignedPmId    String?       @map("assigned_pm_id") @db.Uuid
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   org              Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assignedPm       User?            @relation("AssignedPrograms", fields: [assignedPmId], references: [id])
   baselines        Baseline[]
   changes          Change[]
   invoices         Invoice[]
@@ -396,9 +411,11 @@ model Evidence {
   mimeType    String       @map("mime_type")
   storagePath String       @map("storage_path")
   sha256Hash  String       @map("sha256_hash")
-  metadata    Json?        @default("{}")
-  finalized   Boolean      @default(false)
-  finalizedAt DateTime?    @map("finalized_at")
+  metadata     Json?        @default("{}")
+  originalDate DateTime?   @map("original_date")
+  isBackloaded Boolean     @default(false) @map("is_backloaded")
+  finalized    Boolean     @default(false)
+  finalizedAt  DateTime?   @map("finalized_at")
   retainUntil DateTime?    @map("retain_until")
   deletedAt   DateTime?    @map("deleted_at")
   createdAt   DateTime     @default(now()) @map("created_at")
@@ -527,4 +544,20 @@ model CommitmentTerm {
   @@index([programId, deadlineAt])
   @@index([programId, termType])
   @@map("commitment_terms")
+}
+
+// ─── Import Mappings (CSV/Excel) ─────────────────────────
+
+model ImportMapping {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId      String           @map("org_id") @db.Uuid
+  name       String
+  targetType ImportTargetType @map("target_type")
+  columnMap  Json             @map("column_map")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("import_mappings")
 }

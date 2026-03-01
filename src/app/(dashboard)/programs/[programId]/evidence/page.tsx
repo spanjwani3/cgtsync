@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
+import BulkUploadModal from "@/components/evidence/BulkUploadModal";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 const EVIDENCE_TYPES = [
@@ -33,6 +34,8 @@ interface EvidenceItem {
   finalizedAt: string | null;
   retainUntil: string | null;
   deletedAt: string | null;
+  originalDate: string | null;
+  isBackloaded: boolean;
   createdAt: string;
 }
 
@@ -92,6 +95,7 @@ export default function EvidencePage() {
   const [uploadType, setUploadType] = useState<string>("OTHER");
   const [error, setError] = useState("");
   const [selectedJob, setSelectedJob] = useState<ExtractionJob | null>(null);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
 
   // Apply modal state
   const [applyJob, setApplyJob] = useState<ExtractionJob | null>(null);
@@ -362,6 +366,12 @@ export default function EvidencePage() {
               <option key={t} value={t}>{t.replace(/_/g, " ")}</option>
             ))}
           </select>
+          <button
+            onClick={() => setShowBulkUpload(true)}
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Backload Evidence
+          </button>
           <label className={`cursor-pointer rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 ${uploading ? "opacity-50" : ""}`}>
             {uploading ? "Uploading..." : "Upload Evidence"}
             <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
@@ -406,7 +416,7 @@ export default function EvidencePage() {
                   <th>Size</th>
                   <th>SHA-256</th>
                   <th>Status</th>
-                  <th>Uploaded</th>
+                  <th>Date</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -417,8 +427,13 @@ export default function EvidencePage() {
                     <td><StatusBadge status={ev.type} /></td>
                     <td className="text-sm text-zinc-500">{formatBytes(ev.fileSize)}</td>
                     <td className="font-mono text-xs text-zinc-400" title={ev.sha256Hash}>{ev.sha256Hash.slice(0, 12)}...</td>
-                    <td>{ev.finalized ? <span className="text-xs text-green-600 font-medium">Finalized</span> : <span className="text-xs text-zinc-400">Pending</span>}</td>
-                    <td className="text-xs text-zinc-500">{new Date(ev.createdAt).toLocaleString()}</td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        {ev.finalized ? <span className="text-xs text-green-600 font-medium">Finalized</span> : <span className="text-xs text-zinc-400">Pending</span>}
+                        {ev.isBackloaded && <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">backloaded</span>}
+                      </div>
+                    </td>
+                    <td className="text-xs text-zinc-500">{new Date(ev.originalDate ?? ev.createdAt).toLocaleString()}</td>
                     <td>
                       <div className="flex gap-1">
                         <button onClick={() => viewFile(ev.id)} className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50">View</button>
@@ -622,6 +637,14 @@ export default function EvidencePage() {
             </div>
           )}
         </div>
+      )}
+
+      {showBulkUpload && (
+        <BulkUploadModal
+          programId={programId}
+          onClose={() => setShowBulkUpload(false)}
+          onComplete={() => { setShowBulkUpload(false); loadEvidence(); }}
+        />
       )}
     </div>
   );
