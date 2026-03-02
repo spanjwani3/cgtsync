@@ -37,7 +37,17 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({ link: { id: link.id, scope: link.scope, expiresAt: link.expiresAt, singleUse: link.singleUse, confirmedAt: link.confirmedAt }, entity });
+    // Fetch sender email for display on confirm page
+    const sender = await prisma.user.findUnique({
+      where: { id: link.createdById },
+      select: { email: true },
+    });
+
+    return NextResponse.json({
+      link: { id: link.id, scope: link.scope, expiresAt: link.expiresAt, singleUse: link.singleUse, confirmedAt: link.confirmedAt },
+      entity,
+      sentBy: sender?.email ?? null,
+    });
   } catch (e) {
     console.error("Magic link view error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

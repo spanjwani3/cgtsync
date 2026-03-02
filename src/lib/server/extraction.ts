@@ -17,7 +17,7 @@ const MIN_EXCERPT_WORDS = 10;
 function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
-  return new Anthropic({ apiKey });
+  return new Anthropic({ apiKey, maxRetries: 4 });
 }
 
 // ─── Provenance: every extracted row carries these ────────────
@@ -537,7 +537,10 @@ async function parseWithRetry(
     const validated = schema.parse(parsed) as Record<string, unknown>;
     return { data: validated, totalInputTokens: totalInput, totalOutputTokens: totalOutput, retried: false };
   } catch (firstError) {
-    // Retry once with error feedback
+    // Re-throw API-level errors — SDK already retried these
+    if (firstError instanceof Anthropic.APIError) throw firstError;
+
+    // Retry once with error feedback (JSON/Zod validation errors only)
     const errMsg = firstError instanceof z.ZodError
       ? `Validation errors: ${firstError.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")}`
       : firstError instanceof Error ? firstError.message : "Invalid JSON";

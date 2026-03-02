@@ -74,6 +74,7 @@ export default function ConfirmPage() {
   const { token } = useParams<{ token: string }>();
   const [link, setLink] = useState<LinkData | null>(null);
   const [entity, setEntity] = useState<Record<string, unknown> | null>(null);
+  const [sentBy, setSentBy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -83,16 +84,37 @@ export default function ConfirmPage() {
 
   const { timeLeft, expired } = useCountdown(link?.expiresAt);
 
+  // Dynamic page title
+  useEffect(() => {
+    if (loading) {
+      document.title = "CGT-Sync \u2014 Validating...";
+    } else if (error) {
+      document.title = "CGT-Sync \u2014 Link Error";
+    } else if (entity) {
+      const program = entity.program as Record<string, unknown> | undefined;
+      const programName = (program?.name as string) || "";
+      const scope = link?.scope === "CHANGE_CONFIRM" ? "Confirm Change Order" : "Confirm Baseline";
+      document.title = programName ? `${scope} \u2014 ${programName} \u2014 CGT-Sync` : `${scope} \u2014 CGT-Sync`;
+    }
+  }, [loading, error, entity, link?.scope]);
+
   useEffect(() => {
     async function load() {
-      const res = await fetch(`/api/gateway/magic-link/${token}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLink(data.link);
-        setEntity(data.entity);
-        if (data.link?.confirmedAt) setConfirmed(true);
-      } else {
-        setError("This link is invalid, expired, or has already been used.");
+      try {
+        const res = await fetch(`/api/gateway/magic-link/${token}`);
+        if (res.ok) {
+          const data = await res.json();
+          setLink(data.link);
+          setEntity(data.entity);
+          setSentBy(data.sentBy ?? null);
+          if (data.link?.confirmedAt) setConfirmed(true);
+        } else if (res.status === 404) {
+          setError("expired");
+        } else {
+          setError("server");
+        }
+      } catch {
+        setError("server");
       }
       setLoading(false);
     }
@@ -100,34 +122,53 @@ export default function ConfirmPage() {
   }, [token]);
 
   async function handleConfirm() {
+    const label = link?.scope === "CHANGE_CONFIRM" ? "change order" : "baseline";
+    if (!window.confirm(`Are you sure you want to confirm this ${label}? This action cannot be undone.`)) return;
     setConfirming(true);
-    const res = await fetch(`/api/gateway/magic-link/${token}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "confirm", note: note.trim() || undefined }),
-    });
-    if (res.ok) {
-      setConfirmed(true);
-    } else {
-      const data = await res.json();
-      setError(data.error || "Confirmation failed");
+    try {
+      const res = await fetch(`/api/gateway/magic-link/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "confirm", note: note.trim() || undefined }),
+      });
+      if (res.ok) {
+        setConfirmed(true);
+      } else {
+        try {
+          const data = await res.json();
+          setError(data.error || "Confirmation failed. Please try again.");
+        } catch {
+          setError("Confirmation failed. Please try again.");
+        }
+      }
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     }
     setConfirming(false);
   }
 
   async function handleCounter() {
     if (!note.trim()) return;
+    if (!window.confirm("Submit your counter response? The sponsor will be notified.")) return;
     setConfirming(true);
-    const res = await fetch(`/api/gateway/magic-link/${token}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "counter", note: note.trim() }),
-    });
-    if (res.ok) {
-      setCountered(true);
-    } else {
-      const data = await res.json();
-      setError(data.error || "Counter submission failed");
+    try {
+      const res = await fetch(`/api/gateway/magic-link/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "counter", note: note.trim() }),
+      });
+      if (res.ok) {
+        setCountered(true);
+      } else {
+        try {
+          const data = await res.json();
+          setError(data.error || "Counter submission failed. Please try again.");
+        } catch {
+          setError("Counter submission failed. Please try again.");
+        }
+      }
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     }
     setConfirming(false);
   }
@@ -147,16 +188,44 @@ export default function ConfirmPage() {
   }
 
   if (error) {
+    const isExpiredError = error === "expired";
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <div className="card w-full max-w-md p-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-            <svg className="h-6 w-6 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+          <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${isExpiredError ? "bg-amber-50" : "bg-red-50"}`}>
+            <svg className={`h-6 w-6 ${isExpiredError ? "text-warning" : "text-danger"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {isExpiredError ? (
+                <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>
+              ) : (
+                <><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>
+              )}
             </svg>
           </div>
-          <h1 className="mt-4 text-lg font-semibold text-danger">Link Error</h1>
-          <p className="mt-2 text-sm text-muted">{error}</p>
+          <h1 className={`mt-4 text-lg font-semibold ${isExpiredError ? "text-amber-700" : "text-danger"}`}>
+            {isExpiredError ? "Link Expired or Already Used" : "Something Went Wrong"}
+          </h1>
+          <p className="mt-2 text-sm text-muted">
+            {isExpiredError
+              ? "This confirmation link is no longer valid. It may have expired or already been used."
+              : "We couldn\u2019t load this confirmation page. This is usually temporary."
+            }
+          </p>
+          <div className="mt-6 space-y-3">
+            {!isExpiredError && (
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-primary w-full h-10"
+              >
+                Try Again
+              </button>
+            )}
+            <p className="text-xs text-muted">
+              {isExpiredError
+                ? "Please contact the person who sent you this link to request a new one."
+                : "If this persists, contact the person who sent you this link."
+              }
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -168,6 +237,8 @@ export default function ConfirmPage() {
   const program = entity?.program as Record<string, unknown> | undefined;
   const programName = program?.name as string ?? "";
   const cdmoName = program?.cdmoName as string ?? "";
+  const releasedAt = entity?.releasedAt as string | undefined;
+  const entityStatus = entity?.status as string | undefined;
 
   // Change-specific fields
   const sequenceNum = entity?.sequenceNum as number | undefined;
@@ -188,21 +259,54 @@ export default function ConfirmPage() {
       <div className={`card w-full ${isBaselineScope && clauses.length > 0 ? "max-w-2xl" : "max-w-lg"} p-8 shadow-sm`}>
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto mb-2">
-            <svg className="mx-auto h-10 w-10 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+            <svg className="h-5 w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
-          <p className="text-xs font-medium text-accent-text uppercase tracking-wider">CGT-Sync</p>
+          <p className="text-[10px] font-semibold text-muted uppercase tracking-widest">CGT-Sync</p>
           <h1 className="mt-2 text-xl font-semibold text-foreground">
-            {isChangeScope ? "Change Order Confirmation" : "Baseline Confirmation"}
+            {isChangeScope ? "Change Order Review" : "Baseline Review"}
           </h1>
           {programName && (
             <p className="mt-1 text-sm text-muted">
-              {programName}{cdmoName ? ` — ${cdmoName}` : ""}
+              {programName}{cdmoName ? ` \u2014 ${cdmoName}` : ""}
             </p>
           )}
         </div>
+
+        {/* Context bar — release date, status, sender */}
+        {entity && (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted">
+            {releasedAt && (
+              <span>
+                Sent {new Date(releasedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+            {entityStatus && (
+              <>
+                {releasedAt && <span className="text-card-border">|</span>}
+                <span className="inline-flex items-center gap-1">
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${
+                    entityStatus === "RELEASED" ? "bg-blue-400" :
+                    entityStatus === "CONFIRMED" ? "bg-green-500" :
+                    entityStatus === "COUNTERED" ? "bg-amber-500" : "bg-zinc-400"
+                  }`} />
+                  {entityStatus === "RELEASED" ? "Awaiting your review" :
+                   entityStatus === "CONFIRMED" ? "Confirmed" :
+                   entityStatus === "COUNTERED" ? "Counter submitted" :
+                   entityStatus}
+                </span>
+              </>
+            )}
+            {sentBy && (
+              <>
+                <span className="text-card-border">|</span>
+                <span>From {sentBy}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ═══ CHANGE ORDER DETAILS ═══ */}
         {isChangeScope && (
@@ -278,7 +382,21 @@ export default function ConfirmPage() {
               </div>
             </div>
 
-            {/* Summary counts */}
+            {/* Total value summary */}
+            {(() => {
+              const totalValue = clauses.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
+              if (totalValue <= 0) return null;
+              return (
+                <div className="card bg-zinc-50 text-center py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Total Contract Value</p>
+                  <p className="mt-0.5 text-xl font-bold text-foreground">
+                    ${totalValue.toLocaleString()}
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* Summary counts + grouped clause cards */}
             {(() => {
               const deliverables = clauses.filter(c => {
                 const cat = CATEGORY_MAP[c.type as string] ?? "Deliverable";
@@ -355,40 +473,57 @@ export default function ConfirmPage() {
         )}
 
         {/* Countdown timer */}
-        {link && (
-          <div className={`mt-4 flex items-center justify-center gap-1.5 text-xs ${expired ? "font-medium text-danger" : "text-muted"}`}>
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span>
-              {expired ? "This link has expired" : timeLeft}
-              {link.singleUse && !expired && " · Single use"}
-            </span>
+        {link && !isDone && (
+          <div className={`mt-5 rounded-lg border p-3 text-center ${
+            expired ? "border-red-200 bg-red-50" : "border-card-border bg-zinc-50"
+          }`}>
+            <div className={`flex items-center justify-center gap-1.5 text-xs ${expired ? "font-medium text-danger" : "text-muted"}`}>
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+              <span>{expired ? "This link has expired" : timeLeft}</span>
+            </div>
+            {link.singleUse && !expired && (
+              <p className="mt-1 text-[10px] text-muted/70">This link can only be used once</p>
+            )}
           </div>
         )}
 
         {/* Done states */}
         {confirmed && (
-          <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-center">
-            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-success">
-              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+          <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-5 text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-success">
+              <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <p className="mt-2 text-sm font-medium text-green-700">Confirmed</p>
-            <p className="mt-1 text-xs text-green-600">This action has been confirmed and recorded.</p>
+            <p className="mt-3 text-sm font-semibold text-green-800">
+              {isChangeScope ? "Change Order Approved" : "Baseline Confirmed"}
+            </p>
+            <p className="mt-1 text-xs text-green-700">
+              Your confirmation of <span className="font-medium">{entityName}</span> has been recorded.
+            </p>
+            {note.trim() && (
+              <p className="mt-2 text-xs text-green-600 italic">Your note was included with the confirmation.</p>
+            )}
+            <p className="mt-3 text-[10px] text-green-600">You can close this page. No further action is needed.</p>
           </div>
         )}
 
         {countered && (
-          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-warning">
-              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <path d="M12 9v4" /><path d="M12 17h.01" />
+          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5 text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-warning">
+              <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <p className="mt-2 text-sm font-medium text-amber-700">Response Recorded</p>
-            <p className="mt-1 text-xs text-amber-600">Your note has been sent to the sponsor for review.</p>
+            <p className="mt-3 text-sm font-semibold text-amber-800">Counter Response Recorded</p>
+            <p className="mt-1 text-xs text-amber-700">
+              Your counter for <span className="font-medium">{entityName}</span> has been sent to the sponsor.
+            </p>
+            <p className="mt-3 text-[10px] text-amber-600">The sponsor will review your response and may send a revised version. You can close this page.</p>
           </div>
         )}
 
@@ -445,17 +580,24 @@ export default function ConfirmPage() {
 
         {/* Expired state */}
         {!isDone && expired && (
-          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-danger/10">
-              <svg className="h-4 w-4 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
+              <svg className="h-4 w-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
               </svg>
             </div>
-            <p className="mt-2 text-sm font-medium text-red-700">Link Expired</p>
-            <p className="mt-1 text-xs text-red-600">This confirmation link has expired. Please contact the sponsor for a new link.</p>
+            <p className="mt-2 text-sm font-medium text-amber-700">Link Expired</p>
+            <p className="mt-1 text-xs text-amber-600">
+              This confirmation link has expired. Please contact the person who sent it to request a new one.
+            </p>
           </div>
         )}
       </div>
+
+      {/* Trust footer */}
+      <p className="fixed bottom-4 left-0 right-0 text-center text-[10px] text-muted/60">
+        Secure confirmation page generated by CGT-Sync. Responses are recorded with a timestamp and cannot be modified.
+      </p>
     </div>
   );
 }
