@@ -134,18 +134,29 @@ export default function ConfirmPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-        <p className="text-sm text-zinc-500">Validating link...</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-sm text-muted">
+          <svg className="h-5 w-5 animate-spin text-accent" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Validating link...
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-        <div className="w-full max-w-md rounded-lg border border-red-200 bg-white p-8 text-center">
-          <h1 className="text-lg font-semibold text-red-700">Link Error</h1>
-          <p className="mt-2 text-sm text-zinc-600">{error}</p>
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="card w-full max-w-md p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+            <svg className="h-6 w-6 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          </div>
+          <h1 className="mt-4 text-lg font-semibold text-danger">Link Error</h1>
+          <p className="mt-2 text-sm text-muted">{error}</p>
         </div>
       </div>
     );
@@ -173,16 +184,21 @@ export default function ConfirmPage() {
   const isDone = confirmed || countered;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
-      <div className={`w-full ${isBaselineScope && clauses.length > 0 ? "max-w-2xl" : "max-w-lg"} rounded-lg border border-zinc-200 bg-white p-8 shadow-sm`}>
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className={`card w-full ${isBaselineScope && clauses.length > 0 ? "max-w-2xl" : "max-w-lg"} p-8 shadow-sm`}>
         {/* Header */}
         <div className="text-center">
-          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">CGT-Sync</p>
-          <h1 className="mt-2 text-xl font-semibold text-zinc-900">
+          <div className="mx-auto mb-2">
+            <svg className="mx-auto h-10 w-10 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <p className="text-xs font-medium text-accent-text uppercase tracking-wider">CGT-Sync</p>
+          <h1 className="mt-2 text-xl font-semibold text-foreground">
             {isChangeScope ? "Change Order Confirmation" : "Baseline Confirmation"}
           </h1>
           {programName && (
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-1 text-sm text-muted">
               {programName}{cdmoName ? ` — ${cdmoName}` : ""}
             </p>
           )}
@@ -192,13 +208,13 @@ export default function ConfirmPage() {
         {isChangeScope && (
           <div className="mt-6 space-y-4">
             {/* Change Order Header */}
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-5">
+            <div className="card bg-accent-light/20">
               <div className="flex items-start justify-between">
                 <div>
                   {sequenceNum && (
-                    <p className="text-xs font-medium text-zinc-400 uppercase">Change Order #{sequenceNum}</p>
+                    <p className="text-xs font-medium text-muted uppercase">Change Order #{sequenceNum}</p>
                   )}
-                  <h2 className="mt-1 text-base font-semibold text-zinc-900">{entityName}</h2>
+                  <h2 className="mt-1 text-base font-semibold text-foreground">{entityName}</h2>
                 </div>
                 {severity && (
                   <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${SEVERITY_COLORS[severity] ?? "bg-zinc-100 text-zinc-600"}`}>
@@ -208,12 +224,12 @@ export default function ConfirmPage() {
               </div>
 
               {description && (
-                <p className="mt-3 text-sm text-zinc-600 leading-relaxed">{description}</p>
+                <p className="mt-3 text-sm text-muted leading-relaxed">{description}</p>
               )}
 
               {reasonCode && (
-                <p className="mt-2 text-xs text-zinc-500">
-                  Reason: <span className="font-medium text-zinc-700">{REASON_LABELS[reasonCode] ?? reasonCode}</span>
+                <p className="mt-2 text-xs text-muted">
+                  Reason: <span className="font-medium text-foreground">{REASON_LABELS[reasonCode] ?? reasonCode}</span>
                 </p>
               )}
             </div>
@@ -222,17 +238,17 @@ export default function ConfirmPage() {
             {(estimatedImpact !== null || scheduleImpactDays != null) && (
               <div className="grid grid-cols-2 gap-3">
                 {estimatedImpact !== null && (
-                  <div className={`rounded-lg border-2 p-4 text-center ${estimatedImpact > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Cost Impact</p>
-                    <p className={`mt-1 text-2xl font-bold ${estimatedImpact > 0 ? "text-red-600" : "text-green-600"}`}>
+                  <div className="card text-center">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Cost Impact</p>
+                    <p className={`mt-1 text-2xl font-bold ${estimatedImpact > 0 ? "text-danger" : "text-success"}`}>
                       {estimatedImpact > 0 ? "+" : ""}${Math.abs(estimatedImpact).toLocaleString()}
                     </p>
                   </div>
                 )}
                 {scheduleImpactDays != null && (
-                  <div className="rounded-lg border-2 border-amber-200 bg-amber-50 p-4 text-center">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Schedule Impact</p>
-                    <p className="mt-1 text-2xl font-bold text-amber-700">
+                  <div className="card text-center">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Schedule Impact</p>
+                    <p className="mt-1 text-2xl font-bold text-warning">
                       +{scheduleImpactDays} day{scheduleImpactDays !== 1 ? "s" : ""}
                     </p>
                   </div>
@@ -240,7 +256,7 @@ export default function ConfirmPage() {
               </div>
             )}
 
-            <div className="border-t border-zinc-200" />
+            <div className="border-t border-card-border" />
           </div>
         )}
 
@@ -248,15 +264,15 @@ export default function ConfirmPage() {
         {isBaselineScope && clauses.length > 0 && (
           <div className="mt-6 space-y-4">
             {/* Baseline header */}
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
+            <div className="card bg-accent-light/20">
               <div className="flex items-center justify-between">
                 <div>
                   {baselineVersion && (
-                    <p className="text-xs font-medium text-zinc-400 uppercase">Baseline v{baselineVersion}</p>
+                    <p className="text-xs font-medium text-muted uppercase">Baseline v{baselineVersion}</p>
                   )}
-                  <h2 className="mt-0.5 text-base font-semibold text-zinc-900">{entityName}</h2>
+                  <h2 className="mt-0.5 text-base font-semibold text-foreground">{entityName}</h2>
                 </div>
-                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                <span className="rounded-full bg-accent-light px-3 py-1 text-xs font-semibold text-accent-text">
                   {clauses.length} items
                 </span>
               </div>
@@ -286,19 +302,19 @@ export default function ConfirmPage() {
               return (
                 <div className="space-y-4">
                   {/* Summary bar */}
-                  <div className="flex items-center gap-3 text-xs text-zinc-500">
+                  <div className="flex items-center gap-3 text-xs text-muted">
                     {deliverables.length > 0 && <span>{deliverables.length} Deliverable{deliverables.length !== 1 ? "s" : ""}</span>}
-                    {assumptions.length > 0 && <><span className="text-zinc-300">|</span><span>{assumptions.length} Assumption{assumptions.length !== 1 ? "s" : ""}</span></>}
-                    {exclusions.length > 0 && <><span className="text-zinc-300">|</span><span>{exclusions.length} Exclusion{exclusions.length !== 1 ? "s" : ""}</span></>}
+                    {assumptions.length > 0 && <><span className="text-card-border">|</span><span>{assumptions.length} Assumption{assumptions.length !== 1 ? "s" : ""}</span></>}
+                    {exclusions.length > 0 && <><span className="text-card-border">|</span><span>{exclusions.length} Exclusion{exclusions.length !== 1 ? "s" : ""}</span></>}
                   </div>
 
                   {/* Grouped clause cards */}
                   {groups.map(group => (
                     <div key={group.label}>
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">{group.label}</h3>
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">{group.label}</h3>
                       <div className="space-y-2">
                         {group.items.map((c, i) => (
-                          <div key={i} className="rounded-lg border border-zinc-200 bg-white p-3">
+                          <div key={i} className="card p-3">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
@@ -306,21 +322,21 @@ export default function ConfirmPage() {
                                     {c.type as string}
                                   </span>
                                   {c.clauseRef != null && (
-                                    <span className="font-mono text-[10px] text-zinc-400">#{c.clauseRef as string}</span>
+                                    <span className="font-mono text-[10px] text-muted">#{c.clauseRef as string}</span>
                                   )}
                                 </div>
-                                <h4 className="mt-1 text-sm font-medium text-zinc-900">{c.title as string}</h4>
+                                <h4 className="mt-1 text-sm font-medium text-foreground">{c.title as string}</h4>
                                 {c.description != null && (
-                                  <p className="mt-0.5 text-xs text-zinc-500 line-clamp-2">{c.description as string}</p>
+                                  <p className="mt-0.5 text-xs text-muted line-clamp-2">{c.description as string}</p>
                                 )}
                               </div>
                               {c.value != null && (
                                 <div className="flex-shrink-0 text-right">
-                                  <p className="text-sm font-bold text-zinc-900">
+                                  <p className="text-sm font-bold text-foreground">
                                     {Number(c.value).toLocaleString()}
                                   </p>
                                   {c.unit != null && (
-                                    <p className="text-[10px] text-zinc-400">{c.unit as string}</p>
+                                    <p className="text-[10px] text-muted">{c.unit as string}</p>
                                   )}
                                 </div>
                               )}
@@ -334,29 +350,44 @@ export default function ConfirmPage() {
               );
             })()}
 
-            <div className="border-t border-zinc-200" />
+            <div className="border-t border-card-border" />
           </div>
         )}
 
         {/* Countdown timer */}
         {link && (
-          <p className={`mt-3 text-center text-xs ${expired ? "font-medium text-red-600" : "text-zinc-400"}`}>
-            {expired ? "This link has expired" : timeLeft}
-            {link.singleUse && !expired && " · Single use"}
-          </p>
+          <div className={`mt-4 flex items-center justify-center gap-1.5 text-xs ${expired ? "font-medium text-danger" : "text-muted"}`}>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span>
+              {expired ? "This link has expired" : timeLeft}
+              {link.singleUse && !expired && " · Single use"}
+            </span>
+          </div>
         )}
 
         {/* Done states */}
         {confirmed && (
-          <div className="mt-6 rounded-md border border-green-200 bg-green-50 p-4 text-center">
-            <p className="text-sm font-medium text-green-700">Confirmed</p>
+          <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-success">
+              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <p className="mt-2 text-sm font-medium text-green-700">Confirmed</p>
             <p className="mt-1 text-xs text-green-600">This action has been confirmed and recorded.</p>
           </div>
         )}
 
         {countered && (
-          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-center">
-            <p className="text-sm font-medium text-amber-700">Response Recorded</p>
+          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-warning">
+              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path d="M12 9v4" /><path d="M12 17h.01" />
+              </svg>
+            </div>
+            <p className="mt-2 text-sm font-medium text-amber-700">Response Recorded</p>
             <p className="mt-1 text-xs text-amber-600">Your note has been sent to the sponsor for review.</p>
           </div>
         )}
@@ -366,7 +397,7 @@ export default function ConfirmPage() {
           <div className="mt-6 space-y-4">
             {/* Note textarea */}
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1">
+              <label className="block text-xs font-medium text-muted mb-1">
                 Add a note (optional for confirm, required for counter)
               </label>
               <textarea
@@ -376,7 +407,7 @@ export default function ConfirmPage() {
                   ? "E.g., We agree to the cost but need more time for the schedule change..."
                   : "E.g., We agree to the terms. Section 3.2 pricing needs revision..."
                 }
-                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="input resize-none"
                 rows={3}
               />
             </div>
@@ -386,21 +417,26 @@ export default function ConfirmPage() {
               <button
                 onClick={handleConfirm}
                 disabled={confirming}
-                className="flex h-11 flex-1 items-center justify-center rounded-md bg-green-600 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
+                className="btn-primary h-11 flex-1"
               >
-                {confirming ? "Submitting..." : isChangeScope ? "Approve Change" : "Confirm Baseline"}
+                {confirming ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    Submitting...
+                  </span>
+                ) : isChangeScope ? "Approve Change" : "Confirm Baseline"}
               </button>
               <button
                 onClick={handleCounter}
                 disabled={confirming || !note.trim()}
-                className="flex h-11 flex-1 items-center justify-center rounded-md border-2 border-amber-500 bg-amber-50 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                className="btn-secondary h-11 flex-1 disabled:opacity-50"
                 title={!note.trim() ? "Add a note to explain your counter" : undefined}
               >
                 Counter
               </button>
             </div>
             {!note.trim() && (
-              <p className="text-center text-[10px] text-zinc-400">
+              <p className="text-center text-[10px] text-muted">
                 To counter, add a note above explaining what needs to change
               </p>
             )}
@@ -409,8 +445,13 @@ export default function ConfirmPage() {
 
         {/* Expired state */}
         {!isDone && expired && (
-          <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-center">
-            <p className="text-sm font-medium text-red-700">Link Expired</p>
+          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
+            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-danger/10">
+              <svg className="h-4 w-4 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <p className="mt-2 text-sm font-medium text-red-700">Link Expired</p>
             <p className="mt-1 text-xs text-red-600">This confirmation link has expired. Please contact the sponsor for a new link.</p>
           </div>
         )}
