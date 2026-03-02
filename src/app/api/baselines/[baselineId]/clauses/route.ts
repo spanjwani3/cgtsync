@@ -118,6 +118,10 @@ export async function DELETE(
     const { clauseId } = body;
     if (!clauseId) return NextResponse.json({ error: "clauseId required" }, { status: 400 });
 
+    const clause = await prisma.baselineClause.findUnique({ where: { id: clauseId }, select: { id: true } });
+    if (!clause) {
+      return NextResponse.json({ error: "Clause not found" }, { status: 404 });
+    }
     await prisma.baselineClause.delete({ where: { id: clauseId } });
     await logEvent({
       programId: baseline.programId, userId: auth.userId, action: "CLAUSE_DELETED",

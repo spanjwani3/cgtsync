@@ -189,7 +189,12 @@ export default function BaselinePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clauseId }),
     });
-    if (res.ok) await loadBaseline(selected.id);
+    if (res.ok || res.status === 404) {
+      await loadBaseline(selected.id);
+    } else {
+      const data = await res.json().catch(() => null);
+      setError(data?.error ?? "Failed to delete clause");
+    }
   }
 
   async function createMagicLink(baselineId: string) {

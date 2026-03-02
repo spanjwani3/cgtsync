@@ -127,6 +127,12 @@ export async function POST(req: NextRequest) {
         { status: 429 }
       );
     }
+    if (message === "RESEND_API_KEY is not configured") {
+      return NextResponse.json(
+        { requestId, error: "Email service is not configured. Please set RESEND_API_KEY." },
+        { status: 503 }
+      );
+    }
     console.error(structuredError({
       requestId,
       route: "POST /api/gateway/confirmation/send",
