@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
+import ContactSelector from "@/components/ui/ContactSelector";
 
 // Must match prisma ExportType enum values
 const EXPORT_TYPES = [
@@ -148,10 +149,14 @@ export default function ExportsPage() {
                 <h3 className="text-lg font-semibold text-zinc-900">Email Dispute Pack</h3>
                 <p className="mt-1 text-sm text-zinc-500">Send the generated dispute pack PDF to a recipient.</p>
                 <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700">Recipient email</label>
-                    <input type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
-                  </div>
+                  <ContactSelector
+                    programId={programId}
+                    value={emailTo}
+                    onChange={(email) => setEmailTo(email)}
+                    label="Recipient email"
+                    placeholder="client@example.com"
+                    contactType="CLIENT"
+                  />
                   <div>
                     <label className="block text-sm font-medium text-zinc-700">Message (optional)</label>
                     <textarea value={emailMessage} onChange={(e) => setEmailMessage(e.target.value)} rows={3} placeholder="Additional context for the recipient..." className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />

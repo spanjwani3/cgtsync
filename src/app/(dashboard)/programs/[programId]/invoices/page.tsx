@@ -7,6 +7,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
 import ExtractionProgress from "@/components/ui/ExtractionProgress";
+import ContactSelector from "@/components/ui/ContactSelector";
 
 interface Invoice {
   id: string;
@@ -396,10 +397,13 @@ export default function InvoicesPage() {
               Invoice {reminderTarget.invoiceNumber ?? "N/A"} — Due {reminderTarget.dueDate ? new Date(reminderTarget.dueDate).toLocaleDateString() : "N/A"}
             </p>
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700">Recipient email</label>
-                <input type="email" value={reminderEmail} onChange={(e) => setReminderEmail(e.target.value)} placeholder="vendor@example.com" className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
-              </div>
+              <ContactSelector
+                programId={programId}
+                value={reminderEmail}
+                onChange={(email) => setReminderEmail(email)}
+                label="Recipient email"
+                placeholder="vendor@example.com"
+              />
               <div>
                 <label className="block text-sm font-medium text-zinc-700">Frequency (days)</label>
                 <select value={reminderFreq} onChange={(e) => setReminderFreq(e.target.value)} className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm">
@@ -438,10 +442,14 @@ export default function InvoicesPage() {
                   Invoice {disputeSendTarget.invoiceNumber ?? "N/A"}
                 </p>
                 <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700">Recipient email</label>
-                    <input type="email" value={disputeEmail} onChange={(e) => setDisputeEmail(e.target.value)} placeholder="client@example.com" className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />
-                  </div>
+                  <ContactSelector
+                    programId={programId}
+                    value={disputeEmail}
+                    onChange={(email) => setDisputeEmail(email)}
+                    label="Recipient email"
+                    placeholder="client@example.com"
+                    contactType="CLIENT"
+                  />
                   <div>
                     <label className="block text-sm font-medium text-zinc-700">Message (optional)</label>
                     <textarea value={disputeMessage} onChange={(e) => setDisputeMessage(e.target.value)} rows={3} placeholder="Additional context for the recipient..." className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm" />

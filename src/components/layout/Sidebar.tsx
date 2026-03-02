@@ -119,6 +119,28 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
+function GridIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function UsersIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 /* ───── Nav config ───── */
 
 const PROGRAM_NAV = [
@@ -130,6 +152,7 @@ const PROGRAM_NAV = [
   { key: "import", label: "Import Data", icon: UploadIcon },
   { key: "timeline", label: "Commitment Timeline", icon: ClockIcon },
   { key: "exports", label: "Export Center", icon: DownloadIcon },
+  { key: "contacts", label: "Contacts", icon: UsersIcon },
 ];
 
 /* ───── Component ───── */
@@ -164,7 +187,7 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
       {/* Logo */}
       <div className="flex h-14 items-center gap-2.5 px-5">
         <ShieldIcon className="h-6 w-6 text-sidebar-active" />
-        <Link href="/programs" className="text-base font-bold tracking-tight text-sidebar-text-bright">
+        <Link href="/dashboard" className="text-base font-bold tracking-tight text-sidebar-text-bright">
           CGT-Sync
         </Link>
       </div>
@@ -214,6 +237,17 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
                 Audit Log
               </button>
               <Link
+                href="/dashboard"
+                className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+                  pathname === "/dashboard"
+                    ? "bg-sidebar-active font-medium text-white"
+                    : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+                }`}
+              >
+                <GridIcon className="h-4 w-4 flex-shrink-0" />
+                Dashboard
+              </Link>
+              <Link
                 href="/programs"
                 className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
               >
@@ -231,6 +265,17 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
           </>
         ) : (
           <>
+            <Link
+              href="/dashboard"
+              className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+                pathname === "/dashboard"
+                  ? "bg-sidebar-active font-medium text-white"
+                  : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+              }`}
+            >
+              <GridIcon className="h-4 w-4 flex-shrink-0" />
+              Dashboard
+            </Link>
             <Link
               href="/programs"
               className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${

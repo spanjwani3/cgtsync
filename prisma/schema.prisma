@@ -204,6 +204,12 @@ enum ImportTargetType {
   CONTRACT
 }
 
+enum ContactType {
+  CLIENT
+  INTERNAL
+  OTHER
+}
+
 enum TermType {
   RESERVATION_FEE
   COMMITMENT_DATE
@@ -270,6 +276,7 @@ model Organization {
   emailLogs          EmailLog[]
   emailConfig        OrgEmailConfig?
   reminderSchedules  ReminderSchedule[]
+  contacts           ProgramContact[]
 
   @@map("organizations")
 }
@@ -318,6 +325,7 @@ model Program {
   commitmentTerms  CommitmentTerm[]
   emailLogs        EmailLog[]
   reminderSchedules ReminderSchedule[]
+  contacts          ProgramContact[]
 
   @@map("programs")
 }
@@ -683,4 +691,27 @@ model ReminderSchedule {
 
   @@index([nextSendAt, isActive])
   @@map("reminder_schedules")
+}
+
+// ─── Program Contacts ───────────────────────────────────
+
+model ProgramContact {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId        String      @map("program_id") @db.Uuid
+  orgId            String      @map("org_id") @db.Uuid
+  name             String
+  email            String
+  title            String?
+  organizationName String?     @map("organization_name")
+  contactType      ContactType @default(CLIENT) @map("contact_type")
+  phone            String?
+  isPrimary        Boolean     @default(false) @map("is_primary")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  program Program      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([programId, contactType])
+  @@map("program_contacts")
 }

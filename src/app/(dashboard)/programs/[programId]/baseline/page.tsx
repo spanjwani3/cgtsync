@@ -7,6 +7,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
 import ExtractionProgress from "@/components/ui/ExtractionProgress";
+import ContactSelector from "@/components/ui/ContactSelector";
 
 interface Clause {
   id: string;
@@ -575,16 +576,14 @@ export default function BaselinePage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-zinc-600">Recipient Email *</label>
-                  <input
-                    type="email"
-                    value={confirmEmail}
-                    onChange={(e) => setConfirmEmail(e.target.value)}
-                    placeholder="counterparty@cdmo.com"
-                    className="input mt-1 w-full"
-                  />
-                </div>
+                <ContactSelector
+                  programId={programId}
+                  value={confirmEmail}
+                  onChange={(email) => setConfirmEmail(email)}
+                  label="Recipient Email *"
+                  placeholder="counterparty@cdmo.com"
+                  contactType="CLIENT"
+                />
                 <div>
                   <label className="text-xs font-medium text-zinc-600">Message (optional)</label>
                   <textarea
