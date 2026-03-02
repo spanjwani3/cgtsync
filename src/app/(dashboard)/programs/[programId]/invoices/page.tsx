@@ -373,6 +373,32 @@ export default function InvoicesPage() {
                         </button>
                       </>
                     )}
+                    {inv.status === "APPROVED" && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/gateway/certificate", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ programId, entityType: "INVOICE", entityId: inv.id }),
+                            });
+                            if (res.ok) {
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `certificate-invoice-${inv.invoiceNumber ?? inv.id.slice(0, 8)}.pdf`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }
+                          } catch { /* silent */ }
+                        }}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                        title="Download Certificate"
+                      >
+                        Certificate
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

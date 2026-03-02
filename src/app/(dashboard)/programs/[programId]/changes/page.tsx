@@ -235,6 +235,25 @@ export default function ChangesPage() {
     setSendingEmail(false);
   }
 
+  async function downloadCertificate(changeId: string, seqNum: number) {
+    try {
+      const res = await fetch("/api/gateway/certificate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ programId, entityType: "CHANGE", entityId: changeId }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `certificate-change-${seqNum}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch { /* silent */ }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <div className="flex items-center gap-3 text-sm text-muted">
@@ -407,10 +426,19 @@ export default function ChangesPage() {
                   </>
                 )}
                 {(c.status === "CONFIRMED" || c.status === "LOGGED") && (
-                  <span className="flex items-center gap-1 text-xs text-green-600">
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
-                    Finalized
-                  </span>
+                  <>
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                      Finalized
+                    </span>
+                    <button
+                      onClick={() => downloadCertificate(c.id, c.sequenceNum)}
+                      className="rounded-lg border border-card-border px-2 py-1 text-xs text-muted hover:bg-zinc-50 hover:text-zinc-700"
+                      title="Download Certificate"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><polyline points="9 15 12 18 15 15" /></svg>
+                    </button>
+                  </>
                 )}
                 <button onClick={() => setSelectedChange(c)} className="ml-auto text-xs font-medium text-accent hover:text-accent-text">View Details</button>
               </div>

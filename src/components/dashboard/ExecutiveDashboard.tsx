@@ -185,6 +185,95 @@ export default function ExecutiveDashboard({ readOnly }: ExecutiveDashboardProps
         <p className="mt-1 text-xs text-muted">{collectionVelocity.count} invoice{collectionVelocity.count !== 1 ? "s" : ""} approved</p>
       </div>
 
+      {/* Collection Forecast */}
+      {(() => {
+        const dailyRate = collectionVelocity.periodDays > 0
+          ? collectionVelocity.amount / collectionVelocity.periodDays
+          : 0;
+        const daysToZero = dailyRate > 0
+          ? Math.ceil(metrics.totalOutstanding / dailyRate)
+          : null;
+        const zeroDate = daysToZero != null
+          ? new Date(Date.now() + daysToZero * 86_400_000)
+          : null;
+
+        const BUCKET_EST_DAYS = [15, 20, 35, 50, 75];
+        const bucketForecasts = agingBuckets
+          .map((b, i) => ({
+            label: b.label,
+            amount: b.amount,
+            estDays: BUCKET_EST_DAYS[i] ?? 75,
+            projectedBy: new Date(Date.now() + (BUCKET_EST_DAYS[i] ?? 75) * 86_400_000),
+          }))
+          .filter((b) => b.amount > 0);
+
+        const ninetyPlusBucket = agingBuckets[4];
+        const atRiskPct = metrics.totalOutstanding > 0 && ninetyPlusBucket
+          ? Math.round((ninetyPlusBucket.amount / metrics.totalOutstanding) * 100)
+          : 0;
+
+        const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+        return (
+          <div className="mt-6 card">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+              <h2 className="text-sm font-semibold text-zinc-900">Collection Forecast</h2>
+            </div>
+
+            {metrics.totalOutstanding === 0 ? (
+              <p className="mt-3 text-sm text-green-600 font-medium">No outstanding invoices. All caught up.</p>
+            ) : dailyRate === 0 ? (
+              <p className="mt-3 text-sm text-amber-600">No collections in the last {collectionVelocity.periodDays} days — unable to project.</p>
+            ) : (
+              <>
+                <div className="mt-3 flex items-baseline gap-3">
+                  <p className="text-2xl font-bold text-zinc-900">{daysToZero} days</p>
+                  <p className="text-sm text-muted">to clear outstanding balance</p>
+                </div>
+                {zeroDate && (
+                  <p className="mt-1 text-xs text-muted">
+                    Projected payoff: <span className="font-medium text-zinc-700">{fmtDate(zeroDate)}</span>
+                    <span className="ml-1">(at {fmt(Math.round(dailyRate))}/day)</span>
+                  </p>
+                )}
+
+                {bucketForecasts.length > 0 && (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr>
+                          <th className="text-left font-medium text-muted pb-2">Bucket</th>
+                          <th className="text-right font-medium text-muted pb-2">Outstanding</th>
+                          <th className="text-right font-medium text-muted pb-2">Est. Days</th>
+                          <th className="text-right font-medium text-muted pb-2">Projected By</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bucketForecasts.map((b, i) => (
+                          <tr key={i} className={i % 2 === 0 ? "bg-zinc-50" : ""}>
+                            <td className="py-1.5 pl-2 text-zinc-700">{b.label}</td>
+                            <td className="py-1.5 text-right font-medium text-zinc-900">{fmt(b.amount)}</td>
+                            <td className="py-1.5 text-right text-zinc-600">~{b.estDays}d</td>
+                            <td className="py-1.5 pr-2 text-right text-zinc-600">{fmtDate(b.projectedBy)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {atRiskPct >= 25 && (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    <span className="font-semibold">{atRiskPct}%</span> of outstanding is 90+ days overdue — collection risk
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Delinquent Accounts */}
       {delinquentAccounts.length > 0 && (
         <div className="mt-6 card">

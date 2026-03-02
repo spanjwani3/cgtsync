@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
+import QuickLogModal from "@/components/cockpit/QuickLogModal";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 interface Program {
@@ -77,6 +78,7 @@ export default function CockpitPage() {
   const [savingPm, setSavingPm] = useState(false);
   const pmDropdownRef = useRef<HTMLDivElement>(null);
   const [emailStatuses, setEmailStatuses] = useState<Record<string, string>>({});
+  const [showQuickLog, setShowQuickLog] = useState(false);
 
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
 
@@ -317,6 +319,13 @@ export default function CockpitPage() {
           <p className="mt-1 text-sm text-muted">{program.cdmoName} {program.molecule ? `· ${program.molecule}` : ""} {program.modality ? `· ${program.modality}` : ""}</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowQuickLog(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Quick Log
+          </button>
           <StatusBadge status={program.status} />
           {/* PM Assignment Dropdown */}
           <div className="relative" ref={pmDropdownRef}>
@@ -560,6 +569,19 @@ export default function CockpitPage() {
           </Link>
         ))}
       </div>
+
+      {/* Quick Log Modal */}
+      {showQuickLog && (
+        <QuickLogModal
+          programId={programId}
+          changeThreshold={program.changeThreshold ? Number(program.changeThreshold) : null}
+          onSuccess={() => {
+            setShowQuickLog(false);
+            load();
+          }}
+          onClose={() => setShowQuickLog(false)}
+        />
+      )}
     </div>
   );
 }
