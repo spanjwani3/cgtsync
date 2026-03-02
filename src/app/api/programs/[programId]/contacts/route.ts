@@ -60,26 +60,28 @@ export async function POST(
       return NextResponse.json({ error: "name and email are required" }, { status: 400 });
     }
 
-    // If setting as primary, unset other primaries in this program
-    if (isPrimary) {
-      await prisma.programContact.updateMany({
-        where: { programId, isPrimary: true },
-        data: { isPrimary: false },
-      });
-    }
+    const contact = await prisma.$transaction(async (tx) => {
+      // If setting as primary, unset other primaries in this program
+      if (isPrimary) {
+        await tx.programContact.updateMany({
+          where: { programId, isPrimary: true },
+          data: { isPrimary: false },
+        });
+      }
 
-    const contact = await prisma.programContact.create({
-      data: {
-        programId,
-        orgId: auth.orgId,
-        name,
-        email,
-        title: title ?? null,
-        organizationName: organizationName ?? null,
-        contactType: contactType ?? "CLIENT",
-        phone: phone ?? null,
-        isPrimary: isPrimary ?? false,
-      },
+      return tx.programContact.create({
+        data: {
+          programId,
+          orgId: auth.orgId,
+          name,
+          email,
+          title: title ?? null,
+          organizationName: organizationName ?? null,
+          contactType: contactType ?? "CLIENT",
+          phone: phone ?? null,
+          isPrimary: isPrimary ?? false,
+        },
+      });
     });
 
     await logEvent({

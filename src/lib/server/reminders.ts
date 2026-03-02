@@ -108,7 +108,11 @@ export async function processReminderBatch(): Promise<BatchResult> {
         where: { orgId: schedule.orgId, role: { in: ["ADMIN", "OPERATOR"] } },
         select: { userId: true },
       });
-      const senderUserId = orgAdmin?.userId ?? schedule.orgId; // fallback
+      if (!orgAdmin) {
+        console.warn(`[reminders] No admin/operator found for org ${schedule.orgId}, skipping email log for schedule ${schedule.id}`);
+        continue;
+      }
+      const senderUserId = orgAdmin.userId;
 
       await logEmailSend({
         orgId: schedule.orgId,

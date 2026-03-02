@@ -15,12 +15,14 @@ export async function POST(req: NextRequest) {
     const rawBody = await req.text();
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
 
-    // Verify signature if secret is configured
-    if (webhookSecret) {
-      const signature = req.headers.get("svix-signature") ?? req.headers.get("resend-signature");
-      if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
-        return NextResponse.json({ requestId, error: "Invalid signature" }, { status: 401 });
-      }
+    // Verify webhook signature
+    if (!webhookSecret) {
+      console.warn("[webhook] RESEND_WEBHOOK_SECRET not configured — rejecting request");
+      return NextResponse.json({ requestId, error: "Webhook secret not configured" }, { status: 503 });
+    }
+    const signature = req.headers.get("svix-signature") ?? req.headers.get("resend-signature");
+    if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
+      return NextResponse.json({ requestId, error: "Invalid signature" }, { status: 401 });
     }
 
     const event = JSON.parse(rawBody);

@@ -96,3 +96,53 @@ export async function PATCH(
     return NextResponse.json({ requestId, error: "Internal server error" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ scheduleId: string }> }
+) {
+  const requestId = generateRequestId();
+  let userId: string | undefined;
+  try {
+    const { scheduleId } = await params;
+
+    const schedule = await prisma.reminderSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+    if (!schedule) {
+      return NextResponse.json({ requestId, error: "Schedule not found" }, { status: 404 });
+    }
+
+    const auth = await requireProgramAccess(schedule.programId, OrgRole.OPERATOR);
+    userId = auth.userId;
+
+    await prisma.reminderSchedule.delete({ where: { id: scheduleId } });
+
+    await logEvent({
+      programId: schedule.programId,
+      userId: auth.userId,
+      action: EventAction.REMINDER_SCHEDULE_PAUSED,
+      entityType: "ReminderSchedule",
+      entityId: scheduleId,
+      metadata: { action: "deleted", invoiceId: schedule.invoiceId },
+      ipAddress: getClientIp(req.headers),
+    });
+
+    return NextResponse.json({ requestId, deleted: true });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    if (message === "UNAUTHORIZED") {
+      return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
+    }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
+    }
+    console.error(structuredError({
+      requestId,
+      route: "DELETE /api/gateway/reminders/[scheduleId]",
+      error: e,
+      userId,
+    }));
+    return NextResponse.json({ requestId, error: "Internal server error" }, { status: 500 });
+  }
+}

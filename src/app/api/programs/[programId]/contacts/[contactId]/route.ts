@@ -27,17 +27,19 @@ export async function PATCH(
       if (key in body) data[key] = body[key];
     }
 
-    // If setting as primary, unset other primaries in this program
-    if (data.isPrimary === true) {
-      await prisma.programContact.updateMany({
-        where: { programId, isPrimary: true, id: { not: contactId } },
-        data: { isPrimary: false },
-      });
-    }
+    const updated = await prisma.$transaction(async (tx) => {
+      // If setting as primary, unset other primaries in this program
+      if (data.isPrimary === true) {
+        await tx.programContact.updateMany({
+          where: { programId, isPrimary: true, id: { not: contactId } },
+          data: { isPrimary: false },
+        });
+      }
 
-    const updated = await prisma.programContact.update({
-      where: { id: contactId },
-      data,
+      return tx.programContact.update({
+        where: { id: contactId },
+        data,
+      });
     });
 
     await logEvent({
