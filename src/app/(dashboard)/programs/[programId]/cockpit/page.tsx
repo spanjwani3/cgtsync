@@ -76,6 +76,7 @@ export default function CockpitPage() {
   const [pmDropdownOpen, setPmDropdownOpen] = useState(false);
   const [savingPm, setSavingPm] = useState(false);
   const pmDropdownRef = useRef<HTMLDivElement>(null);
+  const [emailStatuses, setEmailStatuses] = useState<Record<string, string>>({});
 
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
 
@@ -147,6 +148,24 @@ export default function CockpitPage() {
       .then((data) => { if (data?.members) setMembers(data.members); })
       .catch(() => {});
   }, []);
+
+  // Fetch email delivery statuses for pending confirmations
+  useEffect(() => {
+    if (!programId) return;
+    fetch(`/api/gateway/email/log?programId=${programId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.logs) return;
+        const statuses: Record<string, string> = {};
+        for (const log of data.logs as { entityType: string | null; entityId: string | null; status: string }[]) {
+          if (log.entityId && !statuses[log.entityId]) {
+            statuses[log.entityId] = log.status;
+          }
+        }
+        setEmailStatuses(statuses);
+      })
+      .catch(() => {});
+  }, [programId, loading]);
 
   // Close PM dropdown on outside click
   useEffect(() => {
@@ -246,11 +265,12 @@ export default function CockpitPage() {
   const velocitySub = `${thisMonthChanges.length} change${thisMonthChanges.length !== 1 ? "s" : ""} this month`;
 
   // ── Pending Confirmations: RELEASED changes/baselines awaiting CDMO ──
-  const pendingConfirmations: { id: string; label: string; type: string; href: string }[] = [];
+  const pendingConfirmations: { id: string; entityId: string; label: string; type: string; href: string }[] = [];
   for (const b of baselines) {
     if (b.status === "RELEASED") {
       pendingConfirmations.push({
         id: `b-${b.id}`,
+        entityId: b.id,
         label: `Baseline v${b.version}: ${b.title}`,
         type: "BASELINE",
         href: `/programs/${programId}/baseline`,
@@ -261,11 +281,30 @@ export default function CockpitPage() {
     if (c.status === "RELEASED") {
       pendingConfirmations.push({
         id: `c-${c.id}`,
+        entityId: c.id,
         label: `Change #${c.sequenceNum}: ${c.title}`,
         type: "CHANGE",
         href: `/programs/${programId}/changes`,
       });
     }
+  }
+
+  function emailStatusBadge(entityId: string) {
+    const status = emailStatuses[entityId];
+    if (!status) return <span className="text-xs text-zinc-400">No email sent</span>;
+    const styles: Record<string, string> = {
+      QUEUED: "bg-zinc-100 text-zinc-600",
+      SENT: "bg-blue-100 text-blue-700",
+      DELIVERED: "bg-green-100 text-green-700",
+      OPENED: "bg-emerald-100 text-emerald-700",
+      BOUNCED: "bg-red-100 text-red-700",
+      FAILED: "bg-red-100 text-red-700",
+    };
+    return (
+      <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${styles[status] ?? "bg-zinc-100 text-zinc-600"}`}>
+        {status === "OPENED" ? "Opened" : status === "DELIVERED" ? "Delivered" : status === "SENT" ? "Sent" : status === "BOUNCED" ? "Bounced" : status === "FAILED" ? "Failed" : "Queued"}
+      </span>
+    );
   }
 
   return (
@@ -401,7 +440,10 @@ export default function CockpitPage() {
                   }`}>{item.type}</span>
                   <span className="text-sm font-medium text-zinc-700">{item.label}</span>
                 </div>
-                <span className="text-xs text-amber-600">Awaiting response</span>
+                <div className="flex items-center gap-2">
+                  {emailStatusBadge(item.entityId)}
+                  <span className="text-xs text-amber-600">Awaiting response</span>
+                </div>
               </Link>
             ))}
           </div>

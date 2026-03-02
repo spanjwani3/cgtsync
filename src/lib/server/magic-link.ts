@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { MagicLinkScope, EventAction } from "@/generated/prisma/client";
+import { MagicLinkScope, EventAction, EmailEntityType } from "@/generated/prisma/client";
 import { logEvent } from "./event-log";
+import { sendEmail, logEmailSend, checkRateLimit } from "./email";
+import { renderConfirmationEmail } from "./email-templates";
 
 interface CreateMagicLinkParams {
   scope: MagicLinkScope;
@@ -110,4 +112,101 @@ export async function confirmMagicLink(
   });
 
   return link;
+}
+
+// ── Email-integrated confirmation ─────────────────────────
+
+interface CreateConfirmationEmailParams {
+  scope: MagicLinkScope;
+  entityId: string;
+  createdById: string;
+  programId: string;
+  orgId: string;
+  recipientEmail: string;
+  recipientName?: string;
+  message?: string;
+  ttlHours?: number;
+  /** Title of the entity (baseline title or change title) */
+  entityTitle: string;
+  /** Summary items to show in the email */
+  items?: { label: string; value: string }[];
+  /** PM name to show in the email */
+  pmName?: string;
+  /** Org name to show in the email */
+  orgName?: string;
+}
+
+/**
+ * Create a magic link AND send the confirmation email in one step.
+ * Returns the email log ID, magic link ID, and token.
+ */
+export async function createConfirmationEmail(params: CreateConfirmationEmailParams) {
+  // Rate limit check
+  await checkRateLimit(params.orgId);
+
+  // 1. Create the magic link
+  const magicLink = await createMagicLink({
+    scope: params.scope,
+    entityId: params.entityId,
+    createdById: params.createdById,
+    ttlHours: params.ttlHours,
+    singleUse: true,
+  });
+
+  // 2. Build CTA URL
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const ctaUrl = `${siteUrl}/confirm/${magicLink.token}`;
+
+  // 3. Determine email type
+  const type = params.scope === MagicLinkScope.BASELINE_CONFIRM ? "BASELINE" : "CHANGE";
+  const entityType = params.scope === MagicLinkScope.BASELINE_CONFIRM
+    ? EmailEntityType.BASELINE
+    : EmailEntityType.CHANGE;
+
+  // 4. Render email
+  const subject = `${type === "BASELINE" ? "Baseline" : "Change Order"} Confirmation: ${params.entityTitle}`;
+  const html = renderConfirmationEmail({
+    type,
+    title: params.entityTitle,
+    items: params.items,
+    ctaUrl,
+    pmName: params.pmName,
+    orgName: params.orgName,
+    message: params.message,
+  });
+
+  // 5. Send via Resend
+  const result = await sendEmail({
+    to: params.recipientEmail,
+    subject,
+    html,
+  });
+
+  // 6. Log the email
+  const emailLog = await logEmailSend({
+    orgId: params.orgId,
+    programId: params.programId,
+    senderUserId: params.createdById,
+    recipientEmail: params.recipientEmail,
+    recipientName: params.recipientName,
+    subject,
+    templateType: "CONFIRMATION_REQUEST",
+    entityType,
+    entityId: params.entityId,
+    resendId: result.id,
+    metadata: { magicLinkId: magicLink.id },
+  });
+
+  // 7. Link the email log to the magic link
+  await prisma.magicLink.update({
+    where: { id: magicLink.id },
+    data: { emailLogId: emailLog.id },
+  });
+
+  return {
+    emailLogId: emailLog.id,
+    magicLinkId: magicLink.id,
+    token: magicLink.token,
+    error: result.error,
+  };
 }

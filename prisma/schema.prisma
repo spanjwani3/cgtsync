@@ -154,6 +154,19 @@ enum EventAction {
   EVIDENCE_BACKLOADED
   // CSV/Excel bulk import
   BULK_IMPORT
+  // Email
+  EMAIL_SENT
+  EMAIL_DELIVERED
+  EMAIL_OPENED
+  EMAIL_BOUNCED
+  EMAIL_FAILED
+  // Dispute delivery
+  DISPUTE_PACK_SENT
+  // Payment reminders
+  PAYMENT_REMINDER_SENT
+  REMINDER_SCHEDULE_CREATED
+  REMINDER_SCHEDULE_PAUSED
+  REMINDER_SCHEDULE_RESUMED
 }
 
 enum MagicLinkScope {
@@ -200,6 +213,30 @@ enum TermType {
   MATERIAL_ORDER_TRIGGER
 }
 
+enum EmailTemplateType {
+  CONFIRMATION_REQUEST
+  PAYMENT_REMINDER
+  DISPUTE_DELIVERY
+  FOLLOW_UP_REMINDER
+  CUSTOM
+}
+
+enum EmailEntityType {
+  BASELINE
+  CHANGE
+  INVOICE
+  DISPUTE
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  BOUNCED
+  FAILED
+}
+
 // ─── Core Models ────────────────────────────────────────────
 
 /// Maps to Supabase auth.users — stores app-level profile data.
@@ -214,6 +251,7 @@ model User {
   eventLogs        EventLog[]
   magicLinks       MagicLink[]   @relation("CreatedByUser")
   assignedPrograms Program[]     @relation("AssignedPrograms")
+  sentEmails       EmailLog[]    @relation("SentEmails")
 
   @@map("users")
 }
@@ -225,10 +263,13 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  members        OrgMember[]
-  programs       Program[]
-  logoUrl        String?          @map("logo_url")
-  importMappings ImportMapping[]
+  members            OrgMember[]
+  programs           Program[]
+  logoUrl            String?          @map("logo_url")
+  importMappings     ImportMapping[]
+  emailLogs          EmailLog[]
+  emailConfig        OrgEmailConfig?
+  reminderSchedules  ReminderSchedule[]
 
   @@map("organizations")
 }
@@ -275,6 +316,8 @@ model Program {
   exports          Export[]
   extractionJobs   ExtractionJob[]
   commitmentTerms  CommitmentTerm[]
+  emailLogs        EmailLog[]
+  reminderSchedules ReminderSchedule[]
 
   @@map("programs")
 }
@@ -364,6 +407,7 @@ model Invoice {
   invoiceNumber  String?       @map("invoice_number")
   vendorName     String?       @map("vendor_name")
   invoiceDate    DateTime?     @map("invoice_date")
+  dueDate        DateTime?     @map("due_date")
   totalAmount    Decimal?      @map("total_amount") @db.Decimal(14, 2)
   currency       String        @default("USD")
   status         InvoiceStatus @default(UPLOADED)
@@ -371,9 +415,10 @@ model Invoice {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  program      Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
-  evidenceFile Evidence?        @relation("InvoiceEvidence", fields: [evidenceFileId], references: [id])
-  lineItems    InvoiceLineItem[]
+  program           Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
+  evidenceFile      Evidence?         @relation("InvoiceEvidence", fields: [evidenceFileId], references: [id])
+  lineItems         InvoiceLineItem[]
+  reminderSchedule  ReminderSchedule?
 
   @@map("invoices")
 }
@@ -460,13 +505,15 @@ model MagicLink {
   scope       MagicLinkScope
   entityId    String         @map("entity_id") @db.Uuid
   createdById String         @map("created_by_id") @db.Uuid
+  emailLogId  String?        @map("email_log_id") @db.Uuid
   singleUse   Boolean        @default(false) @map("single_use")
   expiresAt   DateTime       @map("expires_at")
   viewedAt    DateTime?      @map("viewed_at")
   confirmedAt DateTime?      @map("confirmed_at")
   createdAt   DateTime       @default(now()) @map("created_at")
 
-  createdBy User @relation("CreatedByUser", fields: [createdById], references: [id])
+  createdBy User      @relation("CreatedByUser", fields: [createdById], references: [id])
+  emailLog  EmailLog? @relation(fields: [emailLogId], references: [id])
 
   @@index([token])
   @@map("magic_links")
@@ -560,4 +607,80 @@ model ImportMapping {
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("import_mappings")
+}
+
+// ─── Email Infrastructure ─────────────────────────────────
+
+model EmailLog {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String            @map("org_id") @db.Uuid
+  programId       String            @map("program_id") @db.Uuid
+  senderUserId    String            @map("sender_user_id") @db.Uuid
+  recipientEmail  String            @map("recipient_email")
+  recipientName   String?           @map("recipient_name")
+  subject         String
+  templateType    EmailTemplateType @map("template_type")
+  entityType      EmailEntityType?  @map("entity_type")
+  entityId        String?           @map("entity_id") @db.Uuid
+  status          EmailStatus       @default(QUEUED)
+  resendId        String?           @map("resend_id")
+  sentAt          DateTime?         @map("sent_at")
+  deliveredAt     DateTime?         @map("delivered_at")
+  openedAt        DateTime?         @map("opened_at")
+  metadata        Json?             @default("{}")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  program    Program      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  sender     User         @relation("SentEmails", fields: [senderUserId], references: [id])
+  magicLinks MagicLink[]
+
+  @@index([programId, createdAt])
+  @@index([entityType, entityId])
+  @@index([resendId])
+  @@map("email_logs")
+}
+
+model OrgEmailConfig {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String   @unique @map("org_id") @db.Uuid
+  sendingDomain   String?  @map("sending_domain")
+  domainVerified  Boolean  @default(false) @map("domain_verified")
+  defaultReplyTo  String?  @map("default_reply_to")
+  dkimConfigured  Boolean  @default(false) @map("dkim_configured")
+  spfConfigured   Boolean  @default(false) @map("spf_configured")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_email_configs")
+}
+
+// ─── Payment Reminder Schedules ──────────────────────────
+
+model ReminderSchedule {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String    @map("org_id") @db.Uuid
+  programId       String    @map("program_id") @db.Uuid
+  invoiceId       String    @unique @map("invoice_id") @db.Uuid
+  recipientEmail  String    @map("recipient_email")
+  frequencyDays   Int       @default(14) @map("frequency_days")
+  startOffsetDays Int       @default(-7) @map("start_offset_days")
+  escalationTier  Int       @default(1) @map("escalation_tier")
+  reminderCount   Int       @default(0) @map("reminder_count")
+  isActive        Boolean   @default(true) @map("is_active")
+  lastSentAt      DateTime? @map("last_sent_at")
+  nextSendAt      DateTime? @map("next_send_at")
+  pausedAt        DateTime? @map("paused_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  program Program      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  invoice Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([nextSendAt, isActive])
+  @@map("reminder_schedules")
 }

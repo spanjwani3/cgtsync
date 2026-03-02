@@ -62,6 +62,10 @@ export default function BaselinePage() {
   const [error, setError] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [clauseReview, setClauseReview] = useState<Record<string, "accepted" | "rejected">>({});
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [sendingConfirmation, setSendingConfirmation] = useState(false);
+  const [confirmSent, setConfirmSent] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -200,6 +204,36 @@ export default function BaselinePage() {
       setShowConfirmModal(false);
       alert(`Magic link copied to clipboard!\n\n${data.url}\n\nExpires: ${new Date(data.expiresAt).toLocaleString()}`);
     }
+  }
+
+  async function sendConfirmationEmail(baselineId: string) {
+    if (!confirmEmail.trim()) return;
+    setSendingConfirmation(true);
+    setError("");
+    try {
+      const res = await fetch("/api/gateway/confirmation/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          programId,
+          entityType: "BASELINE",
+          entityId: baselineId,
+          recipientEmail: confirmEmail.trim(),
+          message: confirmMessage.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        setConfirmSent(confirmEmail.trim());
+        setConfirmEmail("");
+        setConfirmMessage("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Failed to send confirmation email");
+      }
+    } catch {
+      setError("Failed to send confirmation email");
+    }
+    setSendingConfirmation(false);
   }
 
   /* ───── Accept / Reject per clause ───── */
@@ -519,18 +553,64 @@ export default function BaselinePage() {
 
       {/* ═══════ Send for Confirmation modal ═══════ */}
       {showConfirmModal && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowConfirmModal(false)}>
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowConfirmModal(false); setConfirmSent(null); }}>
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-zinc-900">Send for Confirmation</h3>
-            <p className="mt-2 text-sm text-muted">Generate a secure magic link for your CDMO counterparty to review and confirm this baseline.</p>
+            <p className="mt-2 text-sm text-muted">Email a secure confirmation link to your CDMO counterparty, or copy a magic link to share manually.</p>
             <div className="mt-4 rounded-lg bg-zinc-50 p-3">
               <p className="text-xs text-muted">Baseline</p>
               <p className="font-medium text-zinc-900">v{selected.version}: {selected.title}</p>
               <p className="mt-1 text-xs text-muted">{clauses.length} truth items</p>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button onClick={() => setShowConfirmModal(false)} className="btn-secondary">Cancel</button>
-              <button onClick={() => createMagicLink(selected.id)} className="btn-primary">Generate Magic Link</button>
+
+            {confirmSent ? (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
+                <p className="text-sm font-medium text-green-800">Confirmation email sent to {confirmSent}</p>
+                <p className="mt-1 text-xs text-green-600">They will receive a link to review and approve or decline.</p>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-zinc-600">Recipient Email *</label>
+                  <input
+                    type="email"
+                    value={confirmEmail}
+                    onChange={(e) => setConfirmEmail(e.target.value)}
+                    placeholder="counterparty@cdmo.com"
+                    className="input mt-1 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-zinc-600">Message (optional)</label>
+                  <textarea
+                    value={confirmMessage}
+                    onChange={(e) => setConfirmMessage(e.target.value)}
+                    placeholder="Please review and confirm the attached baseline..."
+                    rows={2}
+                    className="input mt-1 w-full resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center justify-between">
+              <button onClick={() => createMagicLink(selected.id)} className="text-xs font-medium text-accent hover:text-accent-text">
+                Copy magic link instead
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowConfirmModal(false); setConfirmSent(null); }} className="btn-secondary">
+                  {confirmSent ? "Close" : "Cancel"}
+                </button>
+                {!confirmSent && (
+                  <button
+                    onClick={() => sendConfirmationEmail(selected.id)}
+                    disabled={!confirmEmail.trim() || sendingConfirmation}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    {sendingConfirmation ? "Sending..." : "Send Email"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
