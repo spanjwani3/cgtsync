@@ -44,10 +44,29 @@ export async function GET(req: NextRequest) {
         deliveredAt: true,
         openedAt: true,
         createdAt: true,
+        magicLinks: {
+          select: {
+            confirmedAt: true,
+            viewedAt: true,
+          },
+          take: 1,
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
 
-    return NextResponse.json({ requestId, logs });
+    // Flatten magic link data into each log entry
+    const enrichedLogs = logs.map((log) => {
+      const ml = log.magicLinks[0] ?? null;
+      return {
+        ...log,
+        magicLinks: undefined,
+        confirmedAt: ml?.confirmedAt ?? null,
+        viewedAt: ml?.viewedAt ?? null,
+      };
+    });
+
+    return NextResponse.json({ requestId, logs: enrichedLogs });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {

@@ -74,7 +74,61 @@ interface EmailLogEntry {
   entityId: string | null;
   status: string;
   sentAt: string | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  confirmedAt: string | null;
+  viewedAt: string | null;
   createdAt: string;
+}
+
+interface EmailDetailEvent {
+  id: string;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+interface EmailDetail {
+  id: string;
+  recipientEmail: string;
+  recipientName: string | null;
+  subject: string;
+  templateType: string;
+  entityType: string | null;
+  entityId: string | null;
+  status: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  confirmedAt: string | null;
+  viewedAt: string | null;
+  magicLinkExpiresAt: string | null;
+  createdAt: string;
+  sender: { fullName: string | null; email: string };
+}
+
+function TimelineItem({ label, time, color, highlight }: { label: string; time: string; color: string; highlight?: boolean }) {
+  return (
+    <div className="relative flex items-start gap-3 pb-4 pl-0">
+      <div className={`relative z-10 mt-0.5 h-[18px] w-[18px] flex-shrink-0 rounded-full border-2 border-white ${color}`} />
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm ${highlight ? "font-semibold text-green-700" : "font-medium text-zinc-700"}`}>{label}</p>
+        <p className="text-[11px] text-muted">{new Date(time).toLocaleString()}</p>
+      </div>
+    </div>
+  );
+}
+
+function getEffectiveStatus(log: EmailLogEntry): { label: string; style: string } {
+  if (log.confirmedAt) return { label: "Confirmed", style: "bg-green-100 text-green-700" };
+  if (log.viewedAt) return { label: "Viewed", style: "bg-emerald-100 text-emerald-700" };
+  if (log.openedAt || log.status === "OPENED") return { label: "Opened", style: "bg-emerald-100 text-emerald-700" };
+  if (log.deliveredAt || log.status === "DELIVERED") return { label: "Delivered", style: "bg-green-100 text-green-700" };
+  if (log.status === "BOUNCED") return { label: "Bounced", style: "bg-red-100 text-red-700" };
+  if (log.status === "FAILED") return { label: "Failed", style: "bg-red-100 text-red-700" };
+  if (log.status === "SENT") return { label: "Sent", style: "bg-blue-100 text-blue-700" };
+  return { label: "Queued", style: "bg-zinc-100 text-zinc-600" };
 }
 
 export default function CockpitPage() {
@@ -92,6 +146,10 @@ export default function CockpitPage() {
   const [emailStatuses, setEmailStatuses] = useState<Record<string, string>>({});
   const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const [emailDetail, setEmailDetail] = useState<EmailDetail | null>(null);
+  const [emailEvents, setEmailEvents] = useState<EmailDetailEvent[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
 
@@ -215,6 +273,24 @@ export default function CockpitPage() {
     setSavingPm(false);
   }
 
+  async function openEmailDetail(id: string) {
+    setSelectedEmailId(id);
+    setLoadingDetail(true);
+    setEmailDetail(null);
+    setEmailEvents([]);
+    try {
+      const res = await fetch(`/api/gateway/email/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEmailDetail(data.emailLog);
+        setEmailEvents(data.events ?? []);
+      }
+    } catch {
+      // silently fail
+    }
+    setLoadingDetail(false);
+  }
+
   function getInitials(name: string | null, email: string): string {
     if (name) return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
     return email[0].toUpperCase();
@@ -306,19 +382,12 @@ export default function CockpitPage() {
   }
 
   function emailStatusBadge(entityId: string) {
-    const status = emailStatuses[entityId];
-    if (!status) return <span className="text-xs text-zinc-400">No email sent</span>;
-    const styles: Record<string, string> = {
-      QUEUED: "bg-zinc-100 text-zinc-600",
-      SENT: "bg-blue-100 text-blue-700",
-      DELIVERED: "bg-green-100 text-green-700",
-      OPENED: "bg-emerald-100 text-emerald-700",
-      BOUNCED: "bg-red-100 text-red-700",
-      FAILED: "bg-red-100 text-red-700",
-    };
+    const log = emailLogs.find((l) => l.entityId === entityId);
+    if (!log) return <span className="text-xs text-zinc-400">No email sent</span>;
+    const { label, style } = getEffectiveStatus(log);
     return (
-      <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${styles[status] ?? "bg-zinc-100 text-zinc-600"}`}>
-        {status === "OPENED" ? "Opened" : status === "DELIVERED" ? "Delivered" : status === "SENT" ? "Sent" : status === "BOUNCED" ? "Bounced" : status === "FAILED" ? "Failed" : "Queued"}
+      <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${style}`}>
+        {label}
       </span>
     );
   }
@@ -595,13 +664,14 @@ export default function CockpitPage() {
           <div className="mt-3 space-y-2">
             {emailLogs.slice(0, 5).map((log) => {
               const templateColors: Record<string, string> = {
-                CONFIRMATION: "bg-amber-100 text-amber-700",
-                DISPUTE: "bg-red-100 text-red-700",
-                REMINDER: "bg-blue-100 text-blue-700",
-                FOLLOW_UP: "bg-purple-100 text-purple-700",
+                CONFIRMATION_REQUEST: "bg-amber-100 text-amber-700",
+                DISPUTE_DELIVERY: "bg-red-100 text-red-700",
+                PAYMENT_REMINDER: "bg-blue-100 text-blue-700",
+                FOLLOW_UP_REMINDER: "bg-purple-100 text-purple-700",
               };
               const templateLabel = log.templateType ?? "EMAIL";
               const templateStyle = templateColors[templateLabel] ?? "bg-zinc-100 text-zinc-600";
+              const { label: statusLabel, style: statusStyle } = getEffectiveStatus(log);
               const ago = (() => {
                 const diff = Date.now() - new Date(log.createdAt).getTime();
                 const mins = Math.floor(diff / 60000);
@@ -613,7 +683,11 @@ export default function CockpitPage() {
                 return `${days}d ago`;
               })();
               return (
-                <div key={log.id} className="flex items-center justify-between rounded-lg border border-card-border bg-white p-3">
+                <button
+                  key={log.id}
+                  onClick={() => openEmailDetail(log.id)}
+                  className="flex w-full items-center justify-between rounded-lg border border-card-border bg-white p-3 text-left transition-colors hover:border-accent/30 hover:shadow-sm"
+                >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${templateStyle}`}>{templateLabel}</span>
                     <div className="min-w-0">
@@ -621,25 +695,14 @@ export default function CockpitPage() {
                       {log.subject && <p className="truncate text-xs text-muted">{log.recipientEmail}</p>}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {(() => {
-                      const styles: Record<string, string> = {
-                        QUEUED: "bg-zinc-100 text-zinc-600",
-                        SENT: "bg-blue-100 text-blue-700",
-                        DELIVERED: "bg-green-100 text-green-700",
-                        OPENED: "bg-emerald-100 text-emerald-700",
-                        BOUNCED: "bg-red-100 text-red-700",
-                        FAILED: "bg-red-100 text-red-700",
-                      };
-                      return (
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${styles[log.status] ?? "bg-zinc-100 text-zinc-600"}`}>
-                          {log.status === "OPENED" ? "Opened" : log.status === "DELIVERED" ? "Delivered" : log.status === "SENT" ? "Sent" : log.status === "BOUNCED" ? "Bounced" : log.status === "FAILED" ? "Failed" : "Queued"}
-                        </span>
-                      );
-                    })()}
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${statusStyle}`}>
+                      {statusLabel}
+                    </span>
                     <span className="text-xs text-muted">{ago}</span>
+                    <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -648,6 +711,179 @@ export default function CockpitPage() {
               View all {emailLogs.length} emails
             </Link>
           )}
+        </div>
+      )}
+
+      {/* Email Detail Slide-over */}
+      {selectedEmailId && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setSelectedEmailId(null)} />
+          <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-card-border bg-white px-5 py-4">
+              <h2 className="text-sm font-semibold text-zinc-900">Email Details</h2>
+              <button onClick={() => setSelectedEmailId(null)} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+
+            {loadingDetail ? (
+              <div className="flex items-center justify-center py-20">
+                <svg className="h-5 w-5 animate-spin text-accent" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              </div>
+            ) : emailDetail ? (
+              <div className="px-5 py-4 space-y-6">
+                {/* Email info */}
+                <div>
+                  <h3 className="text-base font-semibold text-zinc-900">{emailDetail.subject}</h3>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted">To</span>
+                      <span className="font-medium text-zinc-700">{emailDetail.recipientName ? `${emailDetail.recipientName} <${emailDetail.recipientEmail}>` : emailDetail.recipientEmail}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-card-border pt-2">
+                      <span className="text-muted">From</span>
+                      <span className="font-medium text-zinc-700">{emailDetail.sender.fullName ?? emailDetail.sender.email}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-card-border pt-2">
+                      <span className="text-muted">Template</span>
+                      <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{emailDetail.templateType}</span>
+                    </div>
+                    {emailDetail.entityType && (
+                      <div className="flex justify-between border-t border-card-border pt-2">
+                        <span className="text-muted">Linked To</span>
+                        <span className="font-medium text-zinc-700">{emailDetail.entityType}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-card-border pt-2">
+                      <span className="text-muted">Status</span>
+                      {(() => {
+                        const log = emailLogs.find((l) => l.id === emailDetail.id);
+                        const effective = log ? getEffectiveStatus(log) : { label: emailDetail.status, style: "bg-zinc-100 text-zinc-600" };
+                        return <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${effective.style}`}>{effective.label}</span>;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Audit Trail Timeline */}
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900">Audit Trail</h3>
+                  <div className="mt-3 relative">
+                    {/* Timeline line */}
+                    <div className="absolute left-[9px] top-2 bottom-2 w-px bg-zinc-200" />
+                    <div className="space-y-0">
+                      {/* Always show Created */}
+                      <TimelineItem
+                        label="Email created"
+                        time={emailDetail.createdAt}
+                        color="bg-zinc-400"
+                      />
+                      {emailDetail.sentAt && (
+                        <TimelineItem
+                          label="Sent via email provider"
+                          time={emailDetail.sentAt}
+                          color="bg-blue-500"
+                        />
+                      )}
+                      {emailDetail.deliveredAt && (
+                        <TimelineItem
+                          label="Delivered to recipient inbox"
+                          time={emailDetail.deliveredAt}
+                          color="bg-green-500"
+                        />
+                      )}
+                      {emailDetail.openedAt && (
+                        <TimelineItem
+                          label="Email opened by recipient"
+                          time={emailDetail.openedAt}
+                          color="bg-emerald-500"
+                        />
+                      )}
+                      {emailDetail.viewedAt && (
+                        <TimelineItem
+                          label="Confirmation link viewed"
+                          time={emailDetail.viewedAt}
+                          color="bg-teal-500"
+                        />
+                      )}
+                      {emailDetail.confirmedAt && (
+                        <TimelineItem
+                          label="Confirmed by recipient"
+                          time={emailDetail.confirmedAt}
+                          color="bg-green-600"
+                          highlight
+                        />
+                      )}
+                      {emailDetail.status === "BOUNCED" && (
+                        <TimelineItem
+                          label="Email bounced"
+                          time={emailDetail.sentAt ?? emailDetail.createdAt}
+                          color="bg-red-500"
+                        />
+                      )}
+                      {emailDetail.status === "FAILED" && (
+                        <TimelineItem
+                          label="Email delivery failed"
+                          time={emailDetail.createdAt}
+                          color="bg-red-500"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detailed Events */}
+                {emailEvents.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900">Event Log</h3>
+                    <div className="mt-3 space-y-2">
+                      {emailEvents.map((evt) => {
+                        const actionLabels: Record<string, string> = {
+                          EMAIL_SENT: "Email sent",
+                          EMAIL_DELIVERED: "Email delivered",
+                          EMAIL_OPENED: "Email opened",
+                          EMAIL_BOUNCED: "Email bounced",
+                          EMAIL_FAILED: "Email failed",
+                          MAGIC_LINK_CREATED: "Confirmation link created",
+                          MAGIC_LINK_VIEWED: "Confirmation link viewed",
+                          MAGIC_LINK_CONFIRMED: "Confirmed via link",
+                          MAGIC_LINK_EXPIRED: "Confirmation link expired",
+                          BASELINE_CONFIRMED: "Baseline confirmed",
+                          BASELINE_COUNTERED: "Baseline countered",
+                          CHANGE_CONFIRMED: "Change order confirmed",
+                          CHANGE_COUNTERED: "Change order countered",
+                        };
+                        return (
+                          <div key={evt.id} className="rounded-lg border border-card-border bg-zinc-50 px-3 py-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-zinc-700">{actionLabels[evt.action] ?? evt.action}</span>
+                              <span className="text-[10px] text-muted">{new Date(evt.createdAt).toLocaleString()}</span>
+                            </div>
+                            {evt.ipAddress && (
+                              <p className="mt-0.5 text-[10px] text-muted">IP: {evt.ipAddress}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {emailDetail.magicLinkExpiresAt && (
+                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                    <p className="text-xs text-muted">
+                      Confirmation link {new Date(emailDetail.magicLinkExpiresAt) < new Date() ? "expired" : "expires"}{" "}
+                      {new Date(emailDetail.magicLinkExpiresAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center py-20 text-sm text-muted">
+                <p>Could not load email details</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
