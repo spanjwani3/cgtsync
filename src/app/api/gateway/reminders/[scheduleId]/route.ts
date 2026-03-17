@@ -121,7 +121,7 @@ export async function DELETE(
     await logEvent({
       programId: schedule.programId,
       userId: auth.userId,
-      action: EventAction.REMINDER_SCHEDULE_PAUSED,
+      action: EventAction.REMINDER_SCHEDULE_DELETED,
       entityType: "ReminderSchedule",
       entityId: scheduleId,
       metadata: { action: "deleted", invoiceId: schedule.invoiceId },

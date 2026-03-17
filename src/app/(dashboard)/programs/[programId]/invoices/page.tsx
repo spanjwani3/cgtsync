@@ -206,7 +206,7 @@ export default function InvoicesPage() {
     setError("");
     try {
       // Find the latest dispute export for this invoice
-      const exportsRes = await fetch(`/api/exports?programId=${programId}&type=DISPUTE_PACKET`);
+      const exportsRes = await fetch(`/api/gateway/exports?programId=${programId}&type=DISPUTE_PACKET`);
       const exports = exportsRes.ok ? await exportsRes.json() : [];
       const latestExport = Array.isArray(exports) ? exports[0] : null;
 

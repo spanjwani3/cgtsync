@@ -11,6 +11,44 @@ import { CHANGE_BASE_SELECT, CHANGE_INCLUDE_SELECT } from "@/lib/server/change-c
 
 const VALID_EXPORT_TYPES = new Set(Object.values(ExportType));
 
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const programId = searchParams.get("programId");
+    const type = searchParams.get("type");
+
+    if (!programId) {
+      return NextResponse.json({ error: "programId is required" }, { status: 400 });
+    }
+    if (type && !VALID_EXPORT_TYPES.has(type as ExportType)) {
+      return NextResponse.json(
+        { error: `type must be one of: ${Object.values(ExportType).join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    await requireProgramAccess(programId, OrgRole.OPERATOR);
+
+    const where: Record<string, unknown> = { programId };
+    if (type) where.type = type;
+
+    const exports = await prisma.export.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    return NextResponse.json(exports);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (msg === "NOT_FOUND") return NextResponse.json({ error: "Program not found" }, { status: 404 });
+    console.error("Export list error:", e);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
