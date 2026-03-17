@@ -23,7 +23,7 @@ function getResend(): Resend {
 }
 
 function getFromAddress(): string {
-  return process.env.RESEND_FROM_EMAIL ?? "notifications@cgtsync.com";
+  return process.env.RESEND_FROM_EMAIL ?? "notifications@cgtsync.ai";
 }
 
 // ── Rate limiting ───────────────────────────────────────────
