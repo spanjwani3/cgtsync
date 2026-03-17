@@ -30,6 +30,7 @@ const INVOICE_FIELDS = [
   { key: "invoiceNumber", label: "Invoice Number", required: true },
   { key: "totalAmount", label: "Total Amount", required: true },
   { key: "invoiceDate", label: "Invoice Date", required: false },
+  { key: "dueDate", label: "Due Date", required: false },
   { key: "vendorName", label: "Vendor Name", required: false },
   { key: "currency", label: "Currency", required: false },
 ];
@@ -147,7 +148,7 @@ export function validateRows(
           rowWarnings.push(`${field.label} had comma formatting removed`);
         }
         mapped[field.key] = num;
-      } else if (field.key === "invoiceDate") {
+      } else if (field.key === "invoiceDate" || field.key === "dueDate") {
         const date = parseDate(rawVal);
         if (rawVal && !date) {
           rowWarnings.push(`${field.label} could not be parsed`);
@@ -216,6 +217,7 @@ export async function applyImport(
             invoiceNumber: m.invoiceNumber as string | null,
             totalAmount: m.totalAmount != null ? new Prisma.Decimal(m.totalAmount as number) : null,
             invoiceDate: m.invoiceDate ? new Date(m.invoiceDate as string) : null,
+            dueDate: m.dueDate ? new Date(m.dueDate as string) : null,
             vendorName: m.vendorName as string | null,
             currency: (m.currency as string) || "USD",
           },

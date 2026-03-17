@@ -52,6 +52,10 @@ export default function InvoicesPage() {
   const [reminderFreq, setReminderFreq] = useState("14");
   const [savingReminder, setSavingReminder] = useState(false);
 
+  // Inline due date editing
+  const [editingDueDate, setEditingDueDate] = useState<string | null>(null);
+  const [dueDateValue, setDueDateValue] = useState("");
+
   // Dispute send modal
   const [disputeSendTarget, setDisputeSendTarget] = useState<Invoice | null>(null);
   const [disputeEmail, setDisputeEmail] = useState("");
@@ -200,6 +204,25 @@ export default function InvoicesPage() {
     await loadInvoices();
   }
 
+  async function saveDueDate(invoiceId: string, date: string) {
+    if (!date) return;
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueDate: date }),
+      });
+      if (res.ok) {
+        setEditingDueDate(null);
+        await loadInvoices();
+      } else {
+        setError("Failed to save due date");
+      }
+    } catch {
+      setError("Failed to save due date");
+    }
+  }
+
   async function sendDisputeEmail() {
     if (!disputeSendTarget || !disputeEmail.trim()) return;
     setSendingDispute(true);
@@ -326,7 +349,36 @@ export default function InvoicesPage() {
                   {inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString() : "—"}
                 </td>
                 <td className="text-sm text-zinc-500">
-                  {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : "—"}
+                  {editingDueDate === inv.id ? (
+                    <input
+                      type="date"
+                      autoFocus
+                      className="rounded border border-zinc-300 px-1.5 py-0.5 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                      defaultValue={inv.dueDate ? new Date(inv.dueDate).toISOString().split("T")[0] : ""}
+                      onBlur={(e) => {
+                        if (e.target.value) saveDueDate(inv.id, e.target.value);
+                        else setEditingDueDate(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setEditingDueDate(null);
+                      }}
+                    />
+                  ) : inv.dueDate ? (
+                    <button
+                      onClick={() => { setEditingDueDate(inv.id); setDueDateValue(new Date(inv.dueDate!).toISOString().split("T")[0]); }}
+                      className="hover:text-accent hover:underline"
+                    >
+                      {new Date(inv.dueDate).toLocaleDateString()}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setEditingDueDate(inv.id); setDueDateValue(""); }}
+                      className="text-accent hover:underline"
+                    >
+                      + Set
+                    </button>
+                  )}
                 </td>
                 <td className="font-mono text-sm">
                   {inv.totalAmount ? `${inv.currency} ${Number(inv.totalAmount).toLocaleString()}` : "—"}

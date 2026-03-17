@@ -65,6 +65,18 @@ interface SmartTask {
   href: string;
 }
 
+interface EmailLogEntry {
+  id: string;
+  recipientEmail: string;
+  subject: string | null;
+  templateType: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  status: string;
+  sentAt: string | null;
+  createdAt: string;
+}
+
 export default function CockpitPage() {
   const { programId } = useParams<{ programId: string }>();
   const [program, setProgram] = useState<Program | null>(null);
@@ -78,6 +90,7 @@ export default function CockpitPage() {
   const [savingPm, setSavingPm] = useState(false);
   const pmDropdownRef = useRef<HTMLDivElement>(null);
   const [emailStatuses, setEmailStatuses] = useState<Record<string, string>>({});
+  const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
   const [showQuickLog, setShowQuickLog] = useState(false);
 
   useSyncProgram(program ? { id: program.id, name: program.name, molecule: program.molecule } : null);
@@ -158,6 +171,7 @@ export default function CockpitPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.logs) return;
+        setEmailLogs(data.logs as EmailLogEntry[]);
         const statuses: Record<string, string> = {};
         for (const log of data.logs as { entityType: string | null; entityId: string | null; status: string }[]) {
           if (log.entityId && !statuses[log.entityId]) {
@@ -456,6 +470,73 @@ export default function CockpitPage() {
               </Link>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Email Activity */}
+      {emailLogs.length > 0 && (
+        <div className="mt-6 card">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-900">Email Activity</h2>
+            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-100 px-1.5 text-xs font-bold text-blue-700">{emailLogs.length}</span>
+          </div>
+          <p className="mt-1 text-xs text-muted">Recent emails sent from this program</p>
+          <div className="mt-3 space-y-2">
+            {emailLogs.slice(0, 5).map((log) => {
+              const templateColors: Record<string, string> = {
+                CONFIRMATION: "bg-amber-100 text-amber-700",
+                DISPUTE: "bg-red-100 text-red-700",
+                REMINDER: "bg-blue-100 text-blue-700",
+                FOLLOW_UP: "bg-purple-100 text-purple-700",
+              };
+              const templateLabel = log.templateType ?? "EMAIL";
+              const templateStyle = templateColors[templateLabel] ?? "bg-zinc-100 text-zinc-600";
+              const ago = (() => {
+                const diff = Date.now() - new Date(log.createdAt).getTime();
+                const mins = Math.floor(diff / 60000);
+                if (mins < 1) return "just now";
+                if (mins < 60) return `${mins}m ago`;
+                const hrs = Math.floor(mins / 60);
+                if (hrs < 24) return `${hrs}h ago`;
+                const days = Math.floor(hrs / 24);
+                return `${days}d ago`;
+              })();
+              return (
+                <div key={log.id} className="flex items-center justify-between rounded-lg border border-card-border bg-white p-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${templateStyle}`}>{templateLabel}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-700">{log.subject ?? log.recipientEmail}</p>
+                      {log.subject && <p className="truncate text-xs text-muted">{log.recipientEmail}</p>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {(() => {
+                      const styles: Record<string, string> = {
+                        QUEUED: "bg-zinc-100 text-zinc-600",
+                        SENT: "bg-blue-100 text-blue-700",
+                        DELIVERED: "bg-green-100 text-green-700",
+                        OPENED: "bg-emerald-100 text-emerald-700",
+                        BOUNCED: "bg-red-100 text-red-700",
+                        FAILED: "bg-red-100 text-red-700",
+                      };
+                      return (
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${styles[log.status] ?? "bg-zinc-100 text-zinc-600"}`}>
+                          {log.status === "OPENED" ? "Opened" : log.status === "DELIVERED" ? "Delivered" : log.status === "SENT" ? "Sent" : log.status === "BOUNCED" ? "Bounced" : log.status === "FAILED" ? "Failed" : "Queued"}
+                        </span>
+                      );
+                    })()}
+                    <span className="text-xs text-muted">{ago}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {emailLogs.length > 5 && (
+            <Link href={`/programs/${programId}/timeline`} className="mt-3 block text-center text-xs font-medium text-accent hover:text-accent-text">
+              View all {emailLogs.length} emails
+            </Link>
+          )}
         </div>
       )}
 

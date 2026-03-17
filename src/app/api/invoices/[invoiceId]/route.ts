@@ -43,10 +43,10 @@ export async function PATCH(
     if (!invoice) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const auth = await requireProgramAccess(invoice.programId, OrgRole.OPERATOR);
     const body = await req.json();
-    const allowedFields = ["invoiceNumber", "vendorName", "invoiceDate", "totalAmount", "currency", "status"];
+    const allowedFields = ["invoiceNumber", "vendorName", "invoiceDate", "dueDate", "totalAmount", "currency", "status"];
     const data: Record<string, unknown> = {};
     for (const f of allowedFields) {
-      if (f in body) data[f] = f === "invoiceDate" ? new Date(body[f]) : body[f];
+      if (f in body) data[f] = (f === "invoiceDate" || f === "dueDate") ? new Date(body[f]) : body[f];
     }
     const updated = await prisma.invoice.update({ where: { id: invoiceId }, data });
 
