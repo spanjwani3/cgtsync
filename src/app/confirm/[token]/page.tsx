@@ -93,7 +93,7 @@ export default function ConfirmPage() {
     } else if (entity) {
       const program = entity.program as Record<string, unknown> | undefined;
       const programName = (program?.name as string) || "";
-      const scope = link?.scope === "CHANGE_CONFIRM" ? "Confirm Change Order" : "Confirm Baseline";
+      const scope = link?.scope === "CHANGE_CONFIRM" ? "Change Order Confirmation" : "Baseline Confirmation";
       document.title = programName ? `${scope} \u2014 ${programName} \u2014 CGT-Sync` : `${scope} \u2014 CGT-Sync`;
     }
   }, [loading, error, entity, link?.scope]);
@@ -266,7 +266,7 @@ export default function ConfirmPage() {
           </div>
           <p className="text-[10px] font-semibold text-muted uppercase tracking-widest">CGT-Sync</p>
           <h1 className="mt-2 text-xl font-semibold text-foreground">
-            {isChangeScope ? "Change Order Review" : "Baseline Review"}
+            {isChangeScope ? "Change Order Confirmation" : "Baseline Confirmation"}
           </h1>
           {programName && (
             <p className="mt-1 text-sm text-muted">
@@ -498,7 +498,7 @@ export default function ConfirmPage() {
               </svg>
             </div>
             <p className="mt-3 text-sm font-semibold text-green-800">
-              {isChangeScope ? "Change Order Approved" : "Baseline Confirmed"}
+              {isChangeScope ? "Confirmed" : "Confirmed"}
             </p>
             <p className="mt-1 text-xs text-green-700">
               Your confirmation of <span className="font-medium">{entityName}</span> has been recorded.
@@ -519,7 +519,7 @@ export default function ConfirmPage() {
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <p className="mt-3 text-sm font-semibold text-amber-800">Counter Response Recorded</p>
+            <p className="mt-3 text-sm font-semibold text-amber-800">Response Recorded</p>
             <p className="mt-1 text-xs text-amber-700">
               Your counter for <span className="font-medium">{entityName}</span> has been sent to the sponsor.
             </p>
@@ -559,7 +559,7 @@ export default function ConfirmPage() {
                     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                     Submitting...
                   </span>
-                ) : isChangeScope ? "Approve Change" : "Confirm Baseline"}
+                ) : isChangeScope ? "Confirm Change" : "Confirm Baseline"}
               </button>
               <button
                 onClick={handleCounter}
