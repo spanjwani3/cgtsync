@@ -146,6 +146,7 @@ export default function CockpitPage() {
   const [emailStatuses, setEmailStatuses] = useState<Record<string, string>>({});
   const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [openScopeAlerts, setOpenScopeAlerts] = useState(0);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [emailDetail, setEmailDetail] = useState<EmailDetail | null>(null);
   const [emailEvents, setEmailEvents] = useState<EmailDetailEvent[]>([]);
@@ -195,6 +196,15 @@ export default function CockpitPage() {
       setFlags(allFlags);
     }
 
+    // Fetch scope alerts count
+    let scopeAlertCount = 0;
+    const scopeRes = await fetch(`/api/gateway/scope-alerts?programId=${programId}&status=OPEN`);
+    if (scopeRes.ok) {
+      const scopeData = await scopeRes.json();
+      scopeAlertCount = scopeData.stats?.open ?? 0;
+      setOpenScopeAlerts(scopeAlertCount);
+    }
+
     // Build smart tasks
     const smartTasks: SmartTask[] = [];
     const pending = allChanges.filter((c) => c.status === "RELEASED");
@@ -207,6 +217,9 @@ export default function CockpitPage() {
     }
     if (allFlags.length > 0) {
       smartTasks.push({ id: "flagged-invoices", label: `${allFlags.length} Invoice Flag${allFlags.length > 1 ? "s" : ""} to resolve`, type: "DISPUTE", href: `/programs/${programId}/invoices` });
+    }
+    if (scopeAlertCount > 0) {
+      smartTasks.push({ id: "scope-alerts", label: `${scopeAlertCount} Scope Alert${scopeAlertCount > 1 ? "s" : ""} to review`, type: "REVIEW", href: `/programs/${programId}/scope` });
     }
     setTasks(smartTasks);
     setLoading(false);
@@ -461,7 +474,7 @@ export default function CockpitPage() {
       </div>
 
       {/* Metric cards */}
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Link href={`/programs/${programId}/baseline`} className="card card-hover">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">Truth Status</p>
@@ -508,6 +521,19 @@ export default function CockpitPage() {
             {flags.length > 0 ? `${flags.length} Flagged` : `${program._count.invoices} Clean`}
           </p>
           <p className="mt-1 text-xs text-muted">{program._count.invoices} invoice{program._count.invoices !== 1 ? "s" : ""} total</p>
+        </Link>
+
+        <Link href={`/programs/${programId}/scope`} className="card card-hover">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted">Scope Alerts</p>
+            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${openScopeAlerts > 0 ? "bg-amber-50" : "bg-green-50"}`}>
+              <svg className={`h-4 w-4 ${openScopeAlerts > 0 ? "text-amber-500" : "text-green-500"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            </div>
+          </div>
+          <p className={`mt-2 text-2xl font-bold ${openScopeAlerts > 0 ? "text-amber-600" : "text-zinc-900"}`}>
+            {openScopeAlerts > 0 ? `${openScopeAlerts} Open` : "All Clear"}
+          </p>
+          <p className="mt-1 text-xs text-muted">scope creep detection</p>
         </Link>
       </div>
 
@@ -643,6 +669,7 @@ export default function CockpitPage() {
           { href: `/programs/${programId}/evidence`, label: "Evidence Log", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", color: "bg-blue-50 text-blue-500" },
           { href: `/programs/${programId}/exports`, label: "Export Center", icon: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3", color: "bg-emerald-50 text-emerald-500" },
           { href: `/programs/${programId}/timeline`, label: "Commitment Timeline", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zM12 6v6l4 2", color: "bg-amber-50 text-amber-500" },
+          { href: `/programs/${programId}/scope`, label: "Scope Monitor", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zM12 8v4M12 16v.01", color: "bg-orange-50 text-orange-500" },
         ].map((item) => (
           <Link key={item.href} href={item.href} className="card card-hover flex items-center gap-3">
             <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${item.color}`}>

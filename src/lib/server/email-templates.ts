@@ -243,3 +243,98 @@ export function renderFollowUpEmail(params: FollowUpEmailParams): string {
       : "Sent via CGT-Sync. This is an automated follow-up."
   );
 }
+
+// ── Scope Alert Notification Email ──────────────────────────
+
+export interface ScopeAlertEmailParams {
+  programName: string;
+  meetingTitle?: string;
+  alertCount: number;
+  alerts: { title: string; confidence: string; recommendedAction: string }[];
+  ctaUrl: string;
+  orgName?: string;
+}
+
+export function renderScopeAlertEmail(params: ScopeAlertEmailParams): string {
+  const WARNING = "#d97706";
+
+  const alertRows = params.alerts
+    .slice(0, 5)
+    .map(
+      (a) =>
+        `<tr>
+  <td style="padding:8px 12px;font-size:13px;color:${NAVY};font-weight:500;">${a.title}</td>
+  <td style="padding:8px 12px;font-size:13px;color:${a.confidence === "HIGH" ? "#dc2626" : a.confidence === "MEDIUM" ? WARNING : ACCENT};font-weight:600;text-align:center;">${a.confidence}</td>
+  <td style="padding:8px 12px;font-size:12px;color:${MUTED};text-align:right;">${a.recommendedAction.replace(/_/g, " ")}</td>
+</tr>`,
+    )
+    .join("");
+
+  const moreText =
+    params.alertCount > 5
+      ? `<p style="margin:8px 0 0;font-size:12px;color:${MUTED};">+ ${params.alertCount - 5} more alert(s)</p>`
+      : "";
+
+  const meetingLabel = params.meetingTitle ?? "meeting transcript";
+
+  const body = `
+<div style="padding:12px 16px;background-color:#fffbeb;border-left:4px solid ${WARNING};border-radius:0 8px 8px 0;margin-bottom:20px;">
+  <p style="margin:0;font-size:14px;font-weight:600;color:${WARNING};">${params.alertCount} Scope Flag${params.alertCount !== 1 ? "s" : ""} Detected</p>
+</div>
+<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Scope Analysis Results</h2>
+<p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
+  Analysis of <strong>${meetingLabel}</strong> for program <strong>${params.programName}</strong> found potential out-of-scope items that may require change orders.
+</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 8px;border:1px solid ${BORDER};border-radius:8px;overflow:hidden;">
+  <tr style="background-color:#f8fafc;">
+    <td style="padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:${MUTED};font-weight:600;">Flag</td>
+    <td style="padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:${MUTED};font-weight:600;text-align:center;">Confidence</td>
+    <td style="padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:${MUTED};font-weight:600;text-align:right;">Action</td>
+  </tr>
+  ${alertRows}
+</table>
+${moreText}
+<p style="margin:24px 0 16px;">
+  ${ctaButton("Review Scope Alerts", params.ctaUrl)}
+</p>
+<p style="margin:0;font-size:12px;color:${MUTED};">Review and resolve these alerts to keep your program's change management up to date.</p>`;
+
+  return baseLayout(
+    `${params.alertCount} Scope Flag${params.alertCount !== 1 ? "s" : ""} — ${params.programName}`,
+    body,
+    params.orgName
+      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated notification.`
+      : "Sent via CGT-Sync. This is an automated notification.",
+  );
+}
+
+// ── Ingest Confirmation Email ───────────────────────────────
+
+export interface IngestConfirmationEmailParams {
+  subject: string;
+  detectedType: string;
+  programName: string;
+  orgName?: string;
+}
+
+export function renderIngestConfirmationEmail(params: IngestConfirmationEmailParams): string {
+  const typeLabel = params.detectedType === "UNKNOWN" ? "unclassified content" : params.detectedType.toLowerCase().replace(/_/g, " ");
+
+  const body = `
+<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Email Received</h2>
+<p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
+  We received your email <strong>"${params.subject}"</strong> and classified it as <strong>${typeLabel}</strong>.
+  It is being processed for program <strong>${params.programName}</strong>.
+</p>
+<p style="margin:0;font-size:13px;color:${MUTED};line-height:1.5;">
+  ${params.detectedType === "UNKNOWN" ? "A program manager will review and classify this content manually." : "You will be notified if any action items or scope alerts are generated."}
+</p>`;
+
+  return baseLayout(
+    `Email Received — ${params.programName}`,
+    body,
+    params.orgName
+      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated confirmation.`
+      : "Sent via CGT-Sync. This is an automated confirmation.",
+  );
+}

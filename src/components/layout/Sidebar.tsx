@@ -143,10 +143,23 @@ function UsersIcon({ className }: { className?: string }) {
 
 /* ───── Nav config ───── */
 
+function RadarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="2" x2="12" y2="12" />
+      <path d="M12 12l5.66 5.66" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
 const PROGRAM_NAV = [
   { key: "cockpit", label: "Cockpit", icon: LayoutIcon },
   { key: "baseline", label: "Baseline Truth", icon: LockIcon },
   { key: "changes", label: "Change Events", icon: GitBranchIcon },
+  { key: "scope", label: "Scope Monitor", icon: RadarIcon },
   { key: "invoices", label: "Reconciliation", icon: DollarIcon },
   { key: "evidence", label: "Evidence Log", icon: FileIcon },
   { key: "import", label: "Import Data", icon: UploadIcon },

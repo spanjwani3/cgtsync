@@ -168,6 +168,18 @@ enum EventAction {
   REMINDER_SCHEDULE_PAUSED
   REMINDER_SCHEDULE_RESUMED
   REMINDER_SCHEDULE_DELETED
+  // Scope analysis
+  SCOPE_ANALYSIS_STARTED
+  SCOPE_ANALYSIS_COMPLETED
+  SCOPE_ALERT_CREATED
+  SCOPE_ALERT_RESOLVED
+  SCOPE_ALERT_CONVERTED
+  // Inbound email ingestion
+  INGEST_EMAIL_RECEIVED
+  INGEST_EMAIL_PROCESSED
+  INGEST_EMAIL_FAILED
+  INGEST_ADDRESS_CREATED
+  INGEST_ADDRESS_DEACTIVATED
 }
 
 enum MagicLinkScope {
@@ -197,6 +209,7 @@ enum ExtractionTargetType {
   CHANGE_TRANSCRIPT
   CHANGE_EMAIL
   TERMS
+  SCOPE_ANALYSIS
 }
 
 enum ImportTargetType {
@@ -225,6 +238,8 @@ enum EmailTemplateType {
   PAYMENT_REMINDER
   DISPUTE_DELIVERY
   FOLLOW_UP_REMINDER
+  SCOPE_ALERT_NOTIFICATION
+  INGEST_CONFIRMATION
   CUSTOM
 }
 
@@ -259,6 +274,7 @@ model User {
   magicLinks       MagicLink[]   @relation("CreatedByUser")
   assignedPrograms Program[]     @relation("AssignedPrograms")
   sentEmails       EmailLog[]    @relation("SentEmails")
+  createdIngestAddresses IngestAddress[]
 
   @@map("users")
 }
@@ -278,6 +294,7 @@ model Organization {
   emailConfig        OrgEmailConfig?
   reminderSchedules  ReminderSchedule[]
   contacts           ProgramContact[]
+  ingestAddresses    IngestAddress[]
 
   @@map("organizations")
 }
@@ -327,6 +344,10 @@ model Program {
   emailLogs        EmailLog[]
   reminderSchedules ReminderSchedule[]
   contacts          ProgramContact[]
+  scopeAnalyses    ScopeAnalysis[]
+  scopeAlerts      ScopeAlert[]
+  ingestAddresses  IngestAddress[]
+  inboundEmails    InboundEmail[]
 
   @@map("programs")
 }
@@ -353,6 +374,7 @@ model Baseline {
   clauses         BaselineClause[]
   changes         Change[]
   commitmentTerms CommitmentTerm[] @relation("TermBaseline")
+  scopeAnalyses   ScopeAnalysis[]
 
   @@unique([programId, version])
   @@map("baselines")
@@ -371,8 +393,9 @@ model BaselineClause {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  baseline   Baseline    @relation(fields: [baselineId], references: [id], onDelete: Cascade)
-  lineItems  InvoiceLineItem[] @relation("ClauseLineItems")
+  baseline    Baseline    @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  lineItems   InvoiceLineItem[] @relation("ClauseLineItems")
+  scopeAlerts ScopeAlert[]
 
   @@map("baseline_clauses")
 }
@@ -403,6 +426,7 @@ model Change {
   baseline     Baseline? @relation(fields: [baselineId], references: [id])
   evidenceFile Evidence? @relation("ChangeEvidence", fields: [evidenceFileId], references: [id])
   lineItems    InvoiceLineItem[] @relation("ChangeLineItems")
+  scopeAlerts  ScopeAlert[] @relation("AlertToChange")
 
   @@unique([programId, sequenceNum])
   @@map("changes")
@@ -481,6 +505,8 @@ model Evidence {
   invoicesAsEvidence Invoice[]        @relation("InvoiceEvidence")
   extractionJobs     ExtractionJob[]
   termsAsEvidence    CommitmentTerm[] @relation("TermEvidence")
+  scopeAnalyses      ScopeAnalysis[]
+  inboundEmails      InboundEmail[]
 
   @@map("evidences")
 }
@@ -715,4 +741,113 @@ model ProgramContact {
 
   @@index([programId, contactType])
   @@map("program_contacts")
+}
+
+// ─── Scope Analysis ──────────────────────────────────────
+
+model ScopeAnalysis {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId     String    @map("program_id") @db.Uuid
+  evidenceId    String?   @map("evidence_id") @db.Uuid
+  baselineId    String    @map("baseline_id") @db.Uuid
+  source        String    @default("UPLOAD")
+  meetingTitle  String?   @map("meeting_title")
+  meetingDate   DateTime? @map("meeting_date")
+  participants  Json?     @default("[]")
+  summary       String?
+  alertCount    Int       @default(0) @map("alert_count")
+  status        String    @default("PROCESSING")
+  errorMessage  String?   @map("error_message")
+  tokensUsed    Int?      @map("tokens_used")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  program  Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  evidence Evidence? @relation(fields: [evidenceId], references: [id])
+  baseline Baseline  @relation(fields: [baselineId], references: [id])
+  alerts   ScopeAlert[]
+
+  @@index([programId, createdAt])
+  @@map("scope_analyses")
+}
+
+model ScopeAlert {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId         String   @map("program_id") @db.Uuid
+  analysisJobId     String   @map("analysis_job_id") @db.Uuid
+  title             String
+  description       String?
+  transcriptExcerpt String   @map("transcript_excerpt")
+  matchedClauseId   String?  @map("matched_clause_id") @db.Uuid
+  matchedChangeId   String?  @map("matched_change_id") @db.Uuid
+  matchSummary      String?  @map("match_summary")
+  confidence        String   @default("MEDIUM")
+  recommendedAction String   @map("recommended_action")
+  severity          ChangeSeverity @default(MEDIUM)
+  estimatedImpact   Decimal? @map("estimated_impact") @db.Decimal(14, 2)
+  scheduleImpactDays Int?    @map("schedule_impact_days")
+  speaker           String?
+  status            String   @default("OPEN")
+  resolvedAt        DateTime? @map("resolved_at")
+  resolvedNote      String?   @map("resolved_note")
+  convertedChangeId String?   @map("converted_change_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  program        Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
+  analysisJob    ScopeAnalysis  @relation(fields: [analysisJobId], references: [id], onDelete: Cascade)
+  matchedClause  BaselineClause? @relation(fields: [matchedClauseId], references: [id])
+  convertedChange Change?       @relation("AlertToChange", fields: [convertedChangeId], references: [id])
+
+  @@index([programId, status])
+  @@index([analysisJobId])
+  @@map("scope_alerts")
+}
+
+// ─── Email-In Ingestion ─────────────────────────────────
+
+model IngestAddress {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programId   String   @map("program_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  address     String   @unique
+  label       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  program       Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy     User           @relation(fields: [createdById], references: [id])
+  inboundEmails InboundEmail[]
+
+  @@index([address])
+  @@map("ingest_addresses")
+}
+
+model InboundEmail {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ingestAddressId String    @map("ingest_address_id") @db.Uuid
+  programId       String    @map("program_id") @db.Uuid
+  fromEmail       String    @map("from_email")
+  fromName        String?   @map("from_name")
+  subject         String?
+  textBody        String?   @map("text_body")
+  detectedType    String    @default("UNKNOWN") @map("detected_type")
+  status          String    @default("RECEIVED")
+  evidenceId      String?   @map("evidence_id") @db.Uuid
+  extractionJobId String?   @map("extraction_job_id") @db.Uuid
+  errorMessage    String?   @map("error_message")
+  processedAt     DateTime? @map("processed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  ingestAddress IngestAddress @relation(fields: [ingestAddressId], references: [id])
+  program       Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  evidence      Evidence?     @relation(fields: [evidenceId], references: [id])
+
+  @@index([programId, status])
+  @@index([ingestAddressId, createdAt])
+  @@map("inbound_emails")
 }

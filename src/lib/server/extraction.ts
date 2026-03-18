@@ -190,6 +190,7 @@ function getSchemaForTarget(targetType: ExtractionTargetType): z.ZodTypeAny {
     case "CHANGE_TRANSCRIPT": return TranscriptExtractionSchema;
     case "CHANGE_EMAIL": return EmailExtractionSchema;
     case "TERMS": return TermsExtractionSchema;
+    case "SCOPE_ANALYSIS": return TranscriptExtractionSchema;
   }
 }
 
@@ -461,6 +462,7 @@ function getPromptForTarget(targetType: ExtractionTargetType): string {
     case "CHANGE_TRANSCRIPT": return CHANGE_TRANSCRIPT_PROMPT;
     case "CHANGE_EMAIL": return CHANGE_EMAIL_PROMPT;
     case "TERMS": return TERMS_PROMPT;
+    case "SCOPE_ANALYSIS": return CHANGE_TRANSCRIPT_PROMPT;
   }
 }
 
@@ -728,6 +730,13 @@ function estimateConfidence(data: Record<string, unknown>, targetType: Extractio
       if (Array.isArray(terms) && terms.length > 0) score += 0.2;
       if (data.documentTitle) score += 0.1;
       if (data.parties && Array.isArray(data.parties) && (data.parties as unknown[]).length > 0) score += 0.1;
+      if (data.summary) score += 0.1;
+      break;
+    }
+    case "SCOPE_ANALYSIS": {
+      const candidates = data.candidates as unknown[];
+      if (Array.isArray(candidates) && candidates.length > 0) score += 0.2;
+      if (data.meetingTitle) score += 0.1;
       if (data.summary) score += 0.1;
       break;
     }
