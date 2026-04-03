@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx prisma generate && npx tsx scripts/generate-table-map.ts && next build",
+    "build": "npx prisma migrate deploy && npx prisma generate && npx tsx scripts/generate-table-map.ts && next build",
     "start": "next start",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
