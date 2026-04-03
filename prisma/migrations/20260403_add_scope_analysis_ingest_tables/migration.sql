@@ -2,6 +2,30 @@
 -- These models were added to the Prisma schema but never migrated to the database.
 
 -- =====================================================================
+-- 0. Missing enum values
+-- =====================================================================
+
+-- EventAction
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'REMINDER_SCHEDULE_DELETED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'SCOPE_ANALYSIS_STARTED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'SCOPE_ANALYSIS_COMPLETED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'SCOPE_ALERT_CREATED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'SCOPE_ALERT_RESOLVED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'SCOPE_ALERT_CONVERTED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'INGEST_EMAIL_RECEIVED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'INGEST_EMAIL_PROCESSED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'INGEST_EMAIL_FAILED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'INGEST_ADDRESS_CREATED';
+ALTER TYPE "EventAction" ADD VALUE IF NOT EXISTS 'INGEST_ADDRESS_DEACTIVATED';
+
+-- ExtractionTargetType
+ALTER TYPE "ExtractionTargetType" ADD VALUE IF NOT EXISTS 'SCOPE_ANALYSIS';
+
+-- EmailTemplateType
+ALTER TYPE "EmailTemplateType" ADD VALUE IF NOT EXISTS 'SCOPE_ALERT_NOTIFICATION';
+ALTER TYPE "EmailTemplateType" ADD VALUE IF NOT EXISTS 'INGEST_CONFIRMATION';
+
+-- =====================================================================
 -- 1. scope_analyses
 -- =====================================================================
 
