@@ -247,12 +247,10 @@ CREATE POLICY "program_contacts_org_isolation" ON "program_contacts"
 -- ════════════════════════════════════════════════════════════════════
 -- 5. enable_rls_all_tables
 -- (Helper functions are CREATE OR REPLACE = idempotent.
---  Each policy is preceded by DROP POLICY IF EXISTS for safe re-runs.)
+--  Each policy is preceded by DROP POLICY IF EXISTS for safe re-runs.
+--  auth.uid() is provided by Supabase — do NOT redefine it; the auth
+--  schema is owned by supabase_auth_admin and blocks writes.)
 -- ════════════════════════════════════════════════════════════════════
-
-CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid AS $$
-  SELECT nullif(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid;
-$$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION public.is_org_member(p_org_id uuid) RETURNS boolean AS $$
   SELECT EXISTS (
