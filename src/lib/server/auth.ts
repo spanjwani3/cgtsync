@@ -110,6 +110,23 @@ export async function requireTenantOrgAccess(
 }
 
 /**
+ * Require the authenticated user to be a platform admin (super admin).
+ * Membership is determined by the PLATFORM_ADMIN_EMAILS env var
+ * (comma-separated, case-insensitive). Throws FORBIDDEN if not in the list.
+ */
+export async function requirePlatformAdmin(): Promise<AuthContext> {
+  const auth = await requireAuth();
+  const allowlist = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (!allowlist.includes(auth.email.toLowerCase())) {
+    throw new Error("FORBIDDEN");
+  }
+  return auth;
+}
+
+/**
  * Require program access. Looks up program's org and checks membership.
  */
 export async function requireProgramAccess(
