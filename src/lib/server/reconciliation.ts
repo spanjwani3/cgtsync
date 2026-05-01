@@ -359,3 +359,239 @@ export async function reconcileInvoice(
     mappings: results,
   };
 }
+
+// ─── Candidate-change reconciliation (transcripts / emails) ─────────
+//
+// When a meeting transcript or email is ingested, we extract candidate
+// changes. Before they reach the change-review queue we ask Claude to
+// classify each one against the locked baseline + confirmed changes:
+//
+//   IN_BASELINE          — discussion of in-scope work; not creep
+//   ALREADY_CONFIRMED    — already exists as a confirmed change order
+//   SCOPE_CREEP_CANDIDATE — new scope being discussed; flag for PM review
+//   NEEDS_VERIFICATION   — sender wasn't verified (SPF/DKIM/allowlist)
+//
+// This is what makes the email-forwarding feature surface scope creep in
+// real time, instead of waiting for an invoice to expose the gap.
+
+export type CandidateReconFlag =
+  | "IN_BASELINE"
+  | "ALREADY_CONFIRMED"
+  | "SCOPE_CREEP_CANDIDATE"
+  | "NEEDS_VERIFICATION";
+
+export interface CandidateReconResult {
+  candidateIndex: number;
+  flag: CandidateReconFlag;
+  matchedClauseId: string | null;
+  matchedChangeId: string | null;
+  confidence: number;
+  reasoning: string;
+}
+
+export interface CandidateInput {
+  changeTitle: string;
+  description?: string | null;
+  severity?: string | null;
+  estimatedImpact?: number | null;
+}
+
+const CandidateMapping = z.object({
+  candidateIndex: z.number().int().min(0),
+  matchType: z.enum(["CLAUSE", "CHANGE", "NEW_SCOPE"]),
+  matchId: z.string().nullable(),
+  confidence: z.number().min(0).max(1),
+  reasoning: z.string(),
+});
+
+const CandidateReconciliationSchema = z.object({
+  mappings: z.array(CandidateMapping),
+});
+
+const CONFIDENCE_FLOOR = 0.7;
+
+function buildCandidatePrompt(
+  candidates: CandidateInput[],
+  clauses: ClauseInput[],
+  changes: ChangeInput[],
+): string {
+  const candidatesBlock = candidates
+    .map(
+      (c, i) =>
+        `[${i}] "${c.changeTitle}"${c.description ? ` — ${c.description}` : ""}${c.estimatedImpact != null ? ` (est. impact: ${c.estimatedImpact})` : ""}`,
+    )
+    .join("\n");
+
+  const clausesBlock =
+    clauses.length > 0
+      ? clauses
+          .map(
+            (c) =>
+              `- ID:${c.id} Ref:${c.clauseRef ?? "N/A"} "${c.title}"${c.description ? ` — ${c.description}` : ""}`,
+          )
+          .join("\n")
+      : "(No baseline clauses yet)";
+
+  const changesBlock =
+    changes.length > 0
+      ? changes
+          .map(
+            (c) =>
+              `- ID:${c.id} #${c.sequenceNum} "${c.title}"${c.description ? ` — ${c.description}` : ""} (Status: ${c.status})`,
+          )
+          .join("\n")
+      : "(No confirmed change orders yet)";
+
+  return `You are a contract scope analyst for biopharma outsourcing.
+Each "candidate" below was extracted from a meeting transcript or email.
+Decide whether each candidate represents:
+  - existing in-scope work covered by a baseline clause (matchType=CLAUSE),
+  - work already covered by a confirmed change order (matchType=CHANGE),
+  - or net-new scope being discussed that isn't covered yet (matchType=NEW_SCOPE).
+
+CANDIDATES:
+${candidatesBlock}
+
+BASELINE CLAUSES:
+${clausesBlock}
+
+CONFIRMED CHANGE ORDERS:
+${changesBlock}
+
+INSTRUCTIONS:
+1. For each candidate, return ONE mapping.
+2. Use semantic matching. Synonyms count. A candidate that paraphrases or restates a baseline clause is CLAUSE, not NEW_SCOPE.
+3. If matched, set matchId to the clause/change ID. If NEW_SCOPE, matchId is null.
+4. Confidence 0.0–1.0:
+   - 0.9–1.0: near-exact match
+   - 0.7–0.89: clear semantic match
+   - 0.5–0.69: ambiguous
+   - <0.5: treat as NEW_SCOPE
+5. Always include brief reasoning.
+
+Return ONLY valid JSON in this shape:
+{
+  "mappings": [
+    { "candidateIndex": 0, "matchType": "CLAUSE", "matchId": "uuid", "confidence": 0.9, "reasoning": "..." }
+  ]
+}`;
+}
+
+export async function reconcileCandidateChanges(
+  programId: string,
+  candidates: CandidateInput[],
+  options: { senderVerified?: boolean } = {},
+): Promise<CandidateReconResult[]> {
+  if (candidates.length === 0) return [];
+
+  if (options.senderVerified === false) {
+    return candidates.map((_, i) => ({
+      candidateIndex: i,
+      flag: "NEEDS_VERIFICATION" as const,
+      matchedClauseId: null,
+      matchedChangeId: null,
+      confidence: 0,
+      reasoning: "Sender not on the program's allowlist or failed SPF/DKIM. Manual review required.",
+    }));
+  }
+
+  const latestBaseline = await prisma.baseline.findFirst({
+    where: { programId, status: { in: ["LOCKED", "CONFIRMED"] } },
+    orderBy: { version: "desc" },
+    include: { clauses: { orderBy: { sortOrder: "asc" } } },
+  });
+  const confirmedChanges = await prisma.change.findMany({
+    where: { programId, status: { in: ["CONFIRMED", "LOGGED"] } },
+    orderBy: { sequenceNum: "asc" },
+    select: {
+      id: true,
+      sequenceNum: true,
+      title: true,
+      description: true,
+      estimatedImpact: true,
+      status: true,
+    },
+  });
+
+  const clauseInputs: ClauseInput[] = (latestBaseline?.clauses ?? []).map((c) => ({
+    id: c.id,
+    clauseRef: c.clauseRef,
+    title: c.title,
+    description: c.description,
+    value: c.value ? Number(c.value) : null,
+    unit: c.unit,
+    type: c.type,
+  }));
+
+  const changeInputs: ChangeInput[] = confirmedChanges.map((c) => ({
+    id: c.id,
+    sequenceNum: c.sequenceNum,
+    title: c.title,
+    description: c.description,
+    estimatedImpact: c.estimatedImpact ? Number(c.estimatedImpact) : null,
+    status: c.status,
+  }));
+
+  if (clauseInputs.length === 0 && changeInputs.length === 0) {
+    return candidates.map((_, i) => ({
+      candidateIndex: i,
+      flag: "SCOPE_CREEP_CANDIDATE" as const,
+      matchedClauseId: null,
+      matchedChangeId: null,
+      confidence: 0,
+      reasoning: "No locked baseline or confirmed changes to compare against — treating as new scope.",
+    }));
+  }
+
+  const prompt = buildCandidatePrompt(candidates, clauseInputs, changeInputs);
+  const { data } = await callClaudeWithSchema<z.infer<typeof CandidateReconciliationSchema>>(
+    prompt,
+    CandidateReconciliationSchema,
+  );
+
+  const clauseIds = new Set(clauseInputs.map((c) => c.id));
+  const changeIds = new Set(changeInputs.map((c) => c.id));
+
+  const results: CandidateReconResult[] = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const m = data.mappings.find((x) => x.candidateIndex === i);
+    if (!m) {
+      results.push({
+        candidateIndex: i,
+        flag: "SCOPE_CREEP_CANDIDATE",
+        matchedClauseId: null,
+        matchedChangeId: null,
+        confidence: 0,
+        reasoning: "Reconciler did not return a mapping for this candidate.",
+      });
+      continue;
+    }
+
+    let flag: CandidateReconFlag = "SCOPE_CREEP_CANDIDATE";
+    let matchedClauseId: string | null = null;
+    let matchedChangeId: string | null = null;
+
+    if (m.confidence < CONFIDENCE_FLOOR) {
+      flag = "SCOPE_CREEP_CANDIDATE";
+    } else if (m.matchType === "CLAUSE" && m.matchId && clauseIds.has(m.matchId)) {
+      flag = "IN_BASELINE";
+      matchedClauseId = m.matchId;
+    } else if (m.matchType === "CHANGE" && m.matchId && changeIds.has(m.matchId)) {
+      flag = "ALREADY_CONFIRMED";
+      matchedChangeId = m.matchId;
+    } else {
+      flag = "SCOPE_CREEP_CANDIDATE";
+    }
+
+    results.push({
+      candidateIndex: i,
+      flag,
+      matchedClauseId,
+      matchedChangeId,
+      confidence: m.confidence,
+      reasoning: m.reasoning,
+    });
+  }
+
+  return results;
+}

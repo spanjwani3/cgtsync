@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { MULTI_TENANT_MODE } from "@/lib/server/tenant";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
@@ -12,7 +13,6 @@ export async function GET(req: NextRequest) {
     const { error, data } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.user) {
-      // Upsert user record (idempotent)
       await prisma.user.upsert({
         where: { id: data.user.id },
         update: { email: data.user.email ?? "" },
@@ -23,8 +23,16 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      // Ensure org membership exists (idempotent — handles race conditions)
-      await ensureOrgMembership(data.user.id, data.user.email ?? "");
+      const hasMembership = await ensureOrgMembership(
+        data.user.id,
+        data.user.email ?? "",
+      );
+      if (!hasMembership) {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(
+          new URL("/login?error=no_org_membership", req.url),
+        );
+      }
 
       return NextResponse.redirect(new URL(next, req.url));
     }
@@ -34,16 +42,20 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Create default org + membership if the user doesn't have one.
- * Wrapped in try-catch to handle the race where two concurrent requests
- * both see no membership and both try to create — the unique slug constraint
- * on organizations will reject the second attempt.
+ * In single-tenant mode, auto-create a default org so first-time users land
+ * somewhere. In multi-tenant production mode, fail closed: only users who
+ * were pre-provisioned by the onboarding script proceed.
  */
-async function ensureOrgMembership(userId: string, email: string) {
-  const existing = await prisma.orgMember.findFirst({
-    where: { userId },
-  });
-  if (existing) return;
+async function ensureOrgMembership(
+  userId: string,
+  email: string,
+): Promise<boolean> {
+  const existing = await prisma.orgMember.findFirst({ where: { userId } });
+  if (existing) return true;
+
+  if (MULTI_TENANT_MODE) {
+    return false;
+  }
 
   try {
     const org = await prisma.organization.create({
@@ -55,8 +67,9 @@ async function ensureOrgMembership(userId: string, email: string) {
     await prisma.orgMember.create({
       data: { orgId: org.id, userId, role: "ADMIN" },
     });
+    return true;
   } catch {
-    // Unique constraint violation (slug or orgId_userId) — another request
-    // already created the org. This is expected under concurrent requests.
+    const retried = await prisma.orgMember.findFirst({ where: { userId } });
+    return retried !== null;
   }
 }

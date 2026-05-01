@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { getTenantContext } from "@/lib/server/tenant";
 
 export interface AuthContext {
   userId: string;
@@ -90,6 +91,22 @@ export async function requireOrgAccess(
     orgId,
     role: membership.role,
   };
+}
+
+/**
+ * Require access to the tenant org resolved by subdomain middleware.
+ * Use this in routes scoped to the request host rather than a URL param.
+ * Falls back to a generic requireAuth if no tenant header is present
+ * (multi-tenant mode disabled).
+ */
+export async function requireTenantOrgAccess(
+  minRole?: OrgRole,
+): Promise<OrgAuthContext | AuthContext> {
+  const tenant = await getTenantContext();
+  if (!tenant) {
+    return await requireAuth();
+  }
+  return await requireOrgAccess(tenant.orgId, minRole);
 }
 
 /**

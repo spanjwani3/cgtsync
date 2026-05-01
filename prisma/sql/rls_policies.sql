@@ -52,6 +52,8 @@ ALTER TABLE evidences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE magic_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE extraction_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commitment_terms ENABLE ROW LEVEL SECURITY;
 
 -- ─── users ──────────────────────────────────────────────────
 
@@ -232,6 +234,31 @@ CREATE POLICY "exports_select" ON exports
 
 CREATE POLICY "exports_insert" ON exports
   FOR INSERT WITH CHECK (public.is_org_writer(public.program_org_id(program_id)));
+
+-- ─── extraction_jobs ───────────────────────────────────────
+
+CREATE POLICY "extraction_jobs_select" ON extraction_jobs
+  FOR SELECT USING (public.is_org_member(public.program_org_id(program_id)));
+
+CREATE POLICY "extraction_jobs_insert" ON extraction_jobs
+  FOR INSERT WITH CHECK (public.is_org_writer(public.program_org_id(program_id)));
+
+CREATE POLICY "extraction_jobs_update" ON extraction_jobs
+  FOR UPDATE USING (public.is_org_writer(public.program_org_id(program_id)));
+
+-- ─── commitment_terms ──────────────────────────────────────
+
+CREATE POLICY "commitment_terms_select" ON commitment_terms
+  FOR SELECT USING (public.is_org_member(public.program_org_id(program_id)));
+
+CREATE POLICY "commitment_terms_insert" ON commitment_terms
+  FOR INSERT WITH CHECK (public.is_org_writer(public.program_org_id(program_id)));
+
+CREATE POLICY "commitment_terms_update" ON commitment_terms
+  FOR UPDATE USING (public.is_org_writer(public.program_org_id(program_id)));
+
+CREATE POLICY "commitment_terms_delete" ON commitment_terms
+  FOR DELETE USING (public.is_org_writer(public.program_org_id(program_id)));
 
 -- ─── Supabase Storage: private bucket policies ──────────────
 -- These must be configured in Supabase Dashboard → Storage → Policies
