@@ -13,7 +13,9 @@ import type { InboundContentType } from "@/lib/server/ingest-classifier";
 
 export function generateIngestAddress(programId: string): string {
   const shortId = programId.replace(/-/g, "").slice(0, 8);
-  const domain = process.env.INGEST_EMAIL_DOMAIN ?? "ingest.cgtsync.ai";
+  // Default to inbox.cgtsync.ai (DNS-configured for Postmark inbound).
+  // Override via INGEST_EMAIL_DOMAIN if a different MX setup is in use.
+  const domain = process.env.INGEST_EMAIL_DOMAIN ?? "inbox.cgtsync.ai";
   return `prg-${shortId}@${domain}`;
 }
 
