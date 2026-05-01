@@ -6,6 +6,8 @@ import Link from "next/link";
 interface OnboardedAdmin {
   email: string;
   userId: string | null;
+  password: string | null;
+  passwordReset: boolean;
   magicLink: string | null;
   error: string | null;
 }
@@ -14,6 +16,7 @@ interface OnboardResult {
   org: { id: string; name: string; slug: string };
   program: { id: string; name: string };
   tenantHost: string;
+  loginUrl: string;
   admins: OnboardedAdmin[];
 }
 
@@ -247,15 +250,22 @@ function ResultView({ result }: { result: OnboardResult }) {
       </div>
 
       <div className="mt-8">
-        <h2 className="font-semibold text-zinc-900">Magic links</h2>
+        <h2 className="font-semibold text-zinc-900">Admin credentials</h2>
         <p className="mt-1 text-xs text-muted">
-          Send these to each admin. Each link signs the user in once and lands
-          them on the tenant subdomain. Links expire per Supabase Auth
-          settings.
+          For each admin, copy <span className="font-medium">Login URL</span>,{" "}
+          <span className="font-medium">Email</span>, and{" "}
+          <span className="font-medium">Temporary password</span> into an email.
+          Magic link is a one-time backup if the password fails. These
+          credentials are shown <span className="font-medium">only once</span>
+          {" "}— save the email draft before navigating away.
         </p>
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-3">
           {result.admins.map((a) => (
-            <AdminRow key={a.email} admin={a} />
+            <AdminRow
+              key={a.email}
+              admin={a}
+              loginUrl={result.loginUrl}
+            />
           ))}
         </div>
       </div>
@@ -281,40 +291,107 @@ function Field({
   );
 }
 
-function AdminRow({ admin }: { admin: OnboardedAdmin }) {
-  const [copied, setCopied] = useState(false);
+function AdminRow({
+  admin,
+  loginUrl,
+}: {
+  admin: OnboardedAdmin;
+  loginUrl: string;
+}) {
+  const allBlock = [
+    `Sign in at ${loginUrl}`,
+    `Email: ${admin.email}`,
+    admin.password ? `Temporary password: ${admin.password}` : null,
+    "",
+    "Please change your password after signing in.",
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+
   return (
     <div className="card">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-zinc-900">{admin.email}</p>
-          {admin.error && (
-            <p className="mt-1 text-xs text-red-600">{admin.error}</p>
-          )}
-          {admin.magicLink && (
-            <p className="mt-1.5 break-all font-mono text-xs text-zinc-500">
-              {admin.magicLink}
-            </p>
-          )}
-          {!admin.magicLink && !admin.error && (
-            <p className="mt-1 text-xs text-zinc-400">
-              No magic link minted.
-            </p>
-          )}
-        </div>
-        {admin.magicLink && (
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(admin.magicLink!);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="btn-secondary shrink-0"
-          >
-            {copied ? "Copied" : "Copy link"}
-          </button>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-semibold text-zinc-900">{admin.email}</p>
+        {admin.passwordReset && (
+          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            existing user — password reset
+          </span>
         )}
       </div>
+
+      {admin.error && (
+        <p className="mt-2 text-xs text-red-600">{admin.error}</p>
+      )}
+
+      <div className="mt-3 space-y-2 text-sm">
+        <CopyField label="Login URL" value={loginUrl} />
+        <CopyField label="Email" value={admin.email} />
+        {admin.password && (
+          <CopyField
+            label="Temporary password"
+            value={admin.password}
+            mono
+          />
+        )}
+        {admin.magicLink && (
+          <CopyField
+            label="Magic link (backup)"
+            value={admin.magicLink}
+            mono
+            truncate
+          />
+        )}
+      </div>
+
+      {admin.password && (
+        <div className="mt-3 border-t border-card-border pt-3">
+          <button
+            onClick={() => navigator.clipboard.writeText(allBlock)}
+            className="btn-secondary text-xs"
+          >
+            Copy all (URL + email + password)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyField({
+  label,
+  value,
+  mono,
+  truncate,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  truncate?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-44 shrink-0 pt-0.5 text-xs uppercase tracking-wide text-zinc-500">
+        {label}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p
+          className={`${mono ? "font-mono" : ""} ${truncate ? "truncate" : "break-all"} text-zinc-700`}
+          title={value}
+        >
+          {value}
+        </p>
+      </div>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="shrink-0 rounded border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }

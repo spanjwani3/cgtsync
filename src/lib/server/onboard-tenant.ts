@@ -4,10 +4,13 @@
  * (`scripts/onboard-tenant.ts`).
  *
  * Creates Organization + Program + admin Supabase Auth users + OrgMember rows
- * + magic links. Idempotent — re-running with the same slug updates existing
- * rows and reissues magic links.
+ * + a temp password + magic link per admin. Idempotent — re-running with the
+ * same slug updates existing rows, resets passwords, and reissues magic
+ * links. The platform admin delivers either credential to each user;
+ * password is the primary path, magic link is the backup.
  */
 
+import { randomBytes } from "crypto";
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { isValidTenantSlug } from "@/lib/server/tenant";
@@ -25,6 +28,8 @@ export interface OnboardArgs {
 export interface OnboardedAdmin {
   email: string;
   userId: string | null;
+  password: string | null;
+  passwordReset: boolean;
   magicLink: string | null;
   error: string | null;
 }
@@ -33,6 +38,7 @@ export interface OnboardResult {
   org: { id: string; name: string; slug: string };
   program: { id: string; name: string };
   tenantHost: string;
+  loginUrl: string;
   admins: OnboardedAdmin[];
 }
 
@@ -41,6 +47,19 @@ export class OnboardError extends Error {
     super(message);
     this.name = "OnboardError";
   }
+}
+
+/** Unambiguous alphabet (no 0/O/l/1/I) so users can copy the password without confusion. */
+const PW_ALPHABET =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+
+function generatePassword(): string {
+  const bytes = randomBytes(16);
+  let out = "";
+  for (let i = 0; i < 16; i++) {
+    out += PW_ALPHABET[bytes[i] % PW_ALPHABET.length];
+  }
+  return out;
 }
 
 function getAdminSupabase(): SupabaseClient {
@@ -127,6 +146,7 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
     org: { id: org.id, name: org.name, slug: org.slug },
     program: { id: program.id, name: program.name },
     tenantHost,
+    loginUrl: `${tenantHost}/login`,
     admins: adminResults,
   };
 }
@@ -137,12 +157,15 @@ async function provisionAdmin(
   email: string,
   tenantHost: string,
 ): Promise<OnboardedAdmin> {
+  const password = generatePassword();
   let userId: string | null = null;
+  let passwordReset = false;
   let error: string | null = null;
 
   const created = await supabase.auth.admin.createUser({
     email,
     email_confirm: true,
+    password,
   });
 
   if (created.data.user) {
@@ -157,13 +180,30 @@ async function provisionAdmin(
     );
     if (existing) {
       userId = existing.id;
+      // Existing user — reset their password so the new credential works.
+      // Sessions issued on the old password are invalidated.
+      const updated = await supabase.auth.admin.updateUserById(userId, {
+        password,
+      });
+      if (updated.error) {
+        error = `Password reset failed: ${updated.error.message}`;
+      } else {
+        passwordReset = true;
+      }
     } else {
       error = created.error.message;
     }
   }
 
   if (!userId) {
-    return { email, userId: null, magicLink: null, error };
+    return {
+      email,
+      userId: null,
+      password: null,
+      passwordReset: false,
+      magicLink: null,
+      error,
+    };
   }
 
   await prisma.user.upsert({
@@ -192,6 +232,8 @@ async function provisionAdmin(
   return {
     email,
     userId,
+    password,
+    passwordReset,
     magicLink: action_link,
     error: link.error?.message ?? error,
   };
