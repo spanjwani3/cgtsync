@@ -27,6 +27,7 @@ export async function GET(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[GET /api/changes/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -96,10 +97,16 @@ export async function PATCH(
       return NextResponse.json(updated);
     }
 
+    // estimatedImpact: allow updating cost impact
+    if (body.estimatedImpact !== undefined) {
+      data.estimatedImpact = body.estimatedImpact != null ? parseFloat(String(body.estimatedImpact)) : null;
+    }
+
     if (status) {
       const transitions: Record<string, string[]> = {
         DRAFT: ["RELEASED"],
-        RELEASED: ["CONFIRMED", "LOGGED"],
+        RELEASED: ["CONFIRMED", "LOGGED", "COUNTERED"],
+        COUNTERED: ["RELEASED"],
       };
       const allowed = transitions[change.status] ?? [];
       if (!allowed.includes(status)) {
@@ -155,6 +162,7 @@ export async function PATCH(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[PATCH /api/changes/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

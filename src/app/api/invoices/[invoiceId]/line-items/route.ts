@@ -23,6 +23,7 @@ export async function GET(
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.error("[GET /api/invoices/:id/line-items] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -81,6 +82,7 @@ export async function POST(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[POST /api/invoices/:id/line-items] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -133,6 +135,7 @@ export async function PATCH(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[PATCH /api/invoices/:id/line-items] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

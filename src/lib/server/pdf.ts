@@ -1,9 +1,40 @@
 import PDFDocument from "pdfkit";
 import { computeSha256 } from "./storage";
 
+// ─── Constants ───────────────────────────────────────────────
+
+const PAGE_W = 595.28; // A4
+const PAGE_H = 841.89;
+const MARGIN = 50;
+const USABLE_W = PAGE_W - 2 * MARGIN;
+const FOOTER_Y = PAGE_H - 40;
+
+const C = {
+  navy: "#1a2332",
+  dark: "#222222",
+  mid: "#555555",
+  muted: "#888888",
+  light: "#f5f5f5",
+  border: "#dddddd",
+  white: "#ffffff",
+  sectionBg: "#f0f4f8",
+} as const;
+
+// ─── Types ───────────────────────────────────────────────────
+
+export interface PdfTableHeader {
+  label: string;
+  width: number;
+  align?: "left" | "right" | "center";
+}
+
 interface PdfSection {
   title: string;
-  rows: { label: string; value: string }[];
+  rows?: { label: string; value: string }[];
+  table?: {
+    headers: PdfTableHeader[];
+    rows: string[][];
+  };
 }
 
 interface PdfOptions {
@@ -12,20 +43,76 @@ interface PdfOptions {
   generatedBy?: string;
   sections: PdfSection[];
   footer?: string;
+  orgName?: string;
+  logoBuffer?: Buffer;
 }
 
-/**
- * Generate a PDF document server-side and return the buffer + hash.
- * Used for Baseline Packs, Change Ledger Packs, Invoice Review Packs,
- * Dispute Packets, and Weekly Governance Packs.
- */
+// ─── drawTable ───────────────────────────────────────────────
+
+export function drawTable(
+  doc: InstanceType<typeof PDFDocument>,
+  headers: PdfTableHeader[],
+  rows: string[][],
+  options?: { startY?: number; rowHeight?: number; headerBg?: string; altRowBg?: string; fontSize?: number }
+): number {
+  const rowHeight = options?.rowHeight ?? 20;
+  const headerBg = options?.headerBg ?? C.navy;
+  const altRowBg = options?.altRowBg ?? C.light;
+  const fontSize = options?.fontSize ?? 8;
+  let y = options?.startY ?? doc.y;
+
+  // Header row
+  doc.rect(MARGIN, y, USABLE_W, rowHeight).fill(headerBg);
+  let cx = MARGIN;
+  for (const h of headers) {
+    const align = h.align ?? "left";
+    doc.fontSize(fontSize).fillColor(C.white).text(h.label, cx + 4, y + 5, { width: h.width - 8, align });
+    cx += h.width;
+  }
+  y += rowHeight;
+
+  // Data rows
+  for (let r = 0; r < rows.length; r++) {
+    if (y + rowHeight > FOOTER_Y - 20) {
+      doc.addPage();
+      y = MARGIN;
+      // Redraw header on new page
+      doc.rect(MARGIN, y, USABLE_W, rowHeight).fill(headerBg);
+      cx = MARGIN;
+      for (const h of headers) {
+        const align = h.align ?? "left";
+        doc.fontSize(fontSize).fillColor(C.white).text(h.label, cx + 4, y + 5, { width: h.width - 8, align });
+        cx += h.width;
+      }
+      y += rowHeight;
+    }
+
+    const bg = r % 2 === 0 ? C.white : altRowBg;
+    doc.rect(MARGIN, y, USABLE_W, rowHeight).fill(bg);
+
+    cx = MARGIN;
+    for (let c = 0; c < headers.length; c++) {
+      const align = headers[c].align ?? "left";
+      const cellText = rows[r]?.[c] ?? "";
+      doc.fontSize(fontSize).fillColor(C.dark).text(cellText, cx + 4, y + 5, { width: headers[c].width - 8, align });
+      cx += headers[c].width;
+    }
+    y += rowHeight;
+  }
+
+  return y;
+}
+
+// ─── Main Export ─────────────────────────────────────────────
+
 export async function generatePdf(
   options: PdfOptions
 ): Promise<{ buffer: Buffer; sha256Hash: string }> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
-      margin: 50,
+      margin: MARGIN,
+      bufferPages: true,
       info: {
         Title: options.title,
         Author: "CGT-Sync",
@@ -41,62 +128,134 @@ export async function generatePdf(
     });
     doc.on("error", reject);
 
-    // Header
-    doc
-      .fontSize(8)
-      .fillColor("#666666")
-      .text("CGT-Sync | Confidential", 50, 30);
+    // ──── Branded Header Bar (page 1) ────
+    doc.rect(0, 0, PAGE_W, 60).fill(C.navy);
 
-    doc
-      .fontSize(8)
-      .text(
-        `Generated: ${new Date().toISOString()}`,
-        50,
-        30,
-        { align: "right" }
-      );
-
-    // Title
-    doc.moveDown(2);
-    doc.fontSize(20).fillColor("#111111").text(options.title, { align: "left" });
-
-    if (options.subtitle) {
-      doc.fontSize(12).fillColor("#444444").text(options.subtitle);
+    let titleX = MARGIN;
+    if (options.logoBuffer) {
+      try {
+        doc.image(options.logoBuffer, MARGIN, 14, { width: 28 });
+        titleX = MARGIN + 36;
+      } catch {
+        // skip logo on error
+      }
     }
 
-    doc.moveDown(1);
-    doc
-      .moveTo(50, doc.y)
-      .lineTo(545, doc.y)
-      .strokeColor("#cccccc")
-      .stroke();
-    doc.moveDown(1);
+    doc.fontSize(16).fillColor(C.white).text(options.title, titleX, 18, { width: USABLE_W - (titleX - MARGIN) });
+    const headerInfo = options.orgName ? `${options.orgName} | Confidential` : "CGT-Sync | Confidential";
+    doc.fontSize(8).fillColor("#aabbcc").text(headerInfo, MARGIN, 42, { width: USABLE_W / 2 });
+    doc.fontSize(8).fillColor("#aabbcc").text(
+      `Generated: ${new Date().toISOString().split("T")[0]}`,
+      MARGIN + USABLE_W / 2,
+      42,
+      { width: USABLE_W / 2, align: "right" }
+    );
 
-    // Sections
+    // ──── Subtitle / Program info ────
+    let y = 74;
+    if (options.subtitle) {
+      doc.fontSize(11).fillColor(C.dark).text(options.subtitle, MARGIN, y);
+      y += 18;
+    }
+    if (options.generatedBy) {
+      doc.fontSize(8).fillColor(C.muted).text(`Generated by: ${options.generatedBy}`, MARGIN, y);
+      y += 14;
+    }
+
+    // Separator
+    doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).strokeColor(C.border).stroke();
+    y += 12;
+
+    // ──── Sections ────
     for (const section of options.sections) {
-      doc.fontSize(14).fillColor("#222222").text(section.title);
-      doc.moveDown(0.5);
-
-      for (const row of section.rows) {
-        doc.fontSize(9).fillColor("#666666").text(row.label, { continued: true });
-        doc.fillColor("#111111").text(`  ${row.value}`);
+      // Page break check — need space for title + at least one row
+      if (y + 50 > FOOTER_Y - 20) {
+        doc.addPage();
+        y = MARGIN;
       }
 
-      doc.moveDown(1);
+      // Section title with background
+      doc.rect(MARGIN, y, USABLE_W, 22).fill(C.sectionBg);
+      doc.fontSize(10).fillColor(C.navy).text(section.title, MARGIN + 8, y + 6, { width: USABLE_W - 16 });
+      y += 28;
+
+      if (section.table && section.table.rows.length > 0) {
+        // Render as a proper table
+        y = drawTable(doc, section.table.headers, section.table.rows, { startY: y });
+        y += 6;
+      }
+
+      if (section.rows && section.rows.length > 0) {
+        // Render label-value pairs (for metadata above tables)
+        for (const row of section.rows) {
+          if (y + 14 > FOOTER_Y - 20) {
+            doc.addPage();
+            y = MARGIN;
+          }
+          doc.fontSize(8).fillColor(C.muted).text(row.label, MARGIN + 4, y, { continued: true, width: 200 });
+          doc.fillColor(C.dark).text(`  ${row.value}`, { width: USABLE_W - 204 });
+          y = doc.y + 2;
+        }
+        y += 4;
+      }
+
+      y += 8;
     }
 
-    // Footer
+    // Inline footer text
     if (options.footer) {
-      doc.moveDown(2);
-      doc.fontSize(8).fillColor("#999999").text(options.footer, { align: "center" });
+      if (y + 30 > FOOTER_Y - 20) {
+        doc.addPage();
+        y = MARGIN;
+      }
+      doc.fontSize(8).fillColor(C.muted).text(options.footer, MARGIN, y, { align: "center", width: USABLE_W });
     }
 
-    // Generated-by
-    if (options.generatedBy) {
-      doc
-        .fontSize(7)
-        .fillColor("#aaaaaa")
-        .text(`Generated by: ${options.generatedBy}`, 50, doc.page.height - 50);
+    // ──── Header / Footer pass on every page ────
+    const generatedAt = new Date().toISOString();
+    const pageRange = doc.bufferedPageRange();
+    const totalPages = pageRange.count;
+
+    for (let i = 0; i < totalPages; i++) {
+      doc.switchToPage(i);
+
+      // Repeat header on pages after the first (page 1 has the branded bar)
+      if (i > 0) {
+        let headerLeftX = MARGIN;
+        if (options.logoBuffer) {
+          try {
+            doc.image(options.logoBuffer, MARGIN, 12, { width: 20 });
+            headerLeftX = MARGIN + 26;
+          } catch {
+            // skip logo on error
+          }
+        }
+        const orgLabel = options.orgName ?? "CGT-Sync";
+        doc.fontSize(8).fillColor(C.muted).text(orgLabel, headerLeftX, 18, { width: USABLE_W / 3 });
+        doc.fontSize(8).fillColor(C.muted).text(options.title, MARGIN + USABLE_W / 3, 18, { width: USABLE_W / 3, align: "center" });
+        doc.fontSize(8).fillColor(C.muted).text("Confidential", MARGIN + (2 * USABLE_W) / 3, 18, { width: USABLE_W / 3, align: "right" });
+      }
+
+      // Footer
+      doc.moveTo(MARGIN, FOOTER_Y - 5).lineTo(PAGE_W - MARGIN, FOOTER_Y - 5).strokeColor(C.border).stroke();
+      doc.fontSize(7).fillColor(C.muted).text(
+        `Page ${i + 1} of ${totalPages}`,
+        MARGIN,
+        FOOTER_Y,
+        { width: USABLE_W / 3 }
+      );
+      doc.fontSize(7).fillColor(C.muted).text(
+        generatedAt.split("T")[0],
+        MARGIN + USABLE_W / 3,
+        FOOTER_Y,
+        { width: USABLE_W / 3, align: "center" }
+      );
+      doc.fontSize(7).fillColor(C.muted).text(
+        "CGT-Sync",
+        MARGIN + (2 * USABLE_W) / 3,
+        FOOTER_Y,
+        { width: USABLE_W / 3, align: "right" }
+      );
     }
 
     doc.end();

@@ -65,6 +65,19 @@ export async function POST(req: NextRequest) {
     const storagePath = `${invoice.programId}/disputes/${uuidv4()}/${fileName}`;
     await uploadEvidence(buffer, storagePath, "application/pdf");
 
+    // Create Evidence record so it appears in the evidence log
+    await prisma.evidence.create({
+      data: {
+        programId: invoice.programId,
+        type: "DISPUTE_PACKET",
+        fileName,
+        fileSize: buffer.length,
+        mimeType: "application/pdf",
+        storagePath: `evidence/${storagePath}`,
+        sha256Hash,
+      },
+    });
+
     // Mark invoice as disputed
     await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "DISPUTED" } });
 

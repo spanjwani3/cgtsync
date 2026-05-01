@@ -7,6 +7,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
 import ExtractionProgress from "@/components/ui/ExtractionProgress";
+import ContactSelector from "@/components/ui/ContactSelector";
 
 interface Clause {
   id: string;
@@ -27,6 +28,7 @@ interface Baseline {
   releasedAt: string | null;
   confirmedAt: string | null;
   lockedAt: string | null;
+  counterpartyNote: string | null;
   createdAt: string;
   clauses: Clause[];
   _count?: { clauses: number };
@@ -37,7 +39,7 @@ interface Baseline {
 const CATEGORY_MAP: Record<string, string> = {
   PRICING: "Deliverable", SCOPE: "Deliverable", TIMELINE: "Deliverable",
   QUALITY: "Assumption", REGULATORY: "Assumption",
-  PAYMENT_TERMS: "Exclusion", IP: "Exclusion",
+  PAYMENT_TERMS: "Assumption", IP: "Exclusion",
   OTHER: "Deliverable",
 };
 function getCategory(type: string) { return CATEGORY_MAP[type] ?? "Deliverable"; }
@@ -61,6 +63,10 @@ export default function BaselinePage() {
   const [error, setError] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [clauseReview, setClauseReview] = useState<Record<string, "accepted" | "rejected">>({});
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [sendingConfirmation, setSendingConfirmation] = useState(false);
+  const [confirmSent, setConfirmSent] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -184,7 +190,12 @@ export default function BaselinePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clauseId }),
     });
-    if (res.ok) await loadBaseline(selected.id);
+    if (res.ok || res.status === 404) {
+      await loadBaseline(selected.id);
+    } else {
+      const data = await res.json().catch(() => null);
+      setError(data?.error ?? "Failed to delete clause");
+    }
   }
 
   async function createMagicLink(baselineId: string) {
@@ -201,6 +212,36 @@ export default function BaselinePage() {
     }
   }
 
+  async function sendConfirmationEmail(baselineId: string) {
+    if (!confirmEmail.trim()) return;
+    setSendingConfirmation(true);
+    setError("");
+    try {
+      const res = await fetch("/api/gateway/confirmation/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          programId,
+          entityType: "BASELINE",
+          entityId: baselineId,
+          recipientEmail: confirmEmail.trim(),
+          message: confirmMessage.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        setConfirmSent(confirmEmail.trim());
+        setConfirmEmail("");
+        setConfirmMessage("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Failed to send confirmation email");
+      }
+    } catch {
+      setError("Failed to send confirmation email");
+    }
+    setSendingConfirmation(false);
+  }
+
   /* ───── Accept / Reject per clause ───── */
 
   function acceptClause(clauseId: string) {
@@ -210,6 +251,13 @@ export default function BaselinePage() {
       else copy[clauseId] = "accepted";
       return copy;
     });
+  }
+
+  function acceptAll() {
+    if (!selected) return;
+    const all: Record<string, "accepted"> = {};
+    for (const c of selected.clauses) all[c.id] = "accepted";
+    setClauseReview(all);
   }
 
   async function rejectClause(clauseId: string) {
@@ -235,18 +283,15 @@ export default function BaselinePage() {
 
   async function saveEdit() {
     if (!editingClause || !selected) return;
-    // Delete old + re-create with new values (API doesn't have PATCH for clauses)
-    await deleteClause(editingClause.id);
     await fetch(`/api/baselines/${selected.id}/clauses`, {
-      method: "POST",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        type: editingClause.type,
+        clauseId: editingClause.id,
         title: editForm.title,
-        description: editForm.description || undefined,
-        value: editForm.value ? parseFloat(editForm.value) : undefined,
-        unit: editForm.unit || undefined,
-        clauseRef: editingClause.clauseRef || undefined,
+        description: editForm.description || null,
+        value: editForm.value ? parseFloat(editForm.value) : null,
+        unit: editForm.unit || null,
       }),
     });
     setEditingClause(null);
@@ -353,6 +398,9 @@ export default function BaselinePage() {
                 {selected.status === "RELEASED" && (
                   <button onClick={() => transitionStatus(selected.id, "CONFIRMED")} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">Confirm</button>
                 )}
+                {selected.status === "COUNTERED" && (
+                  <button onClick={() => transitionStatus(selected.id, "RELEASED")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">Re-release</button>
+                )}
                 {selected.status === "CONFIRMED" && (
                   <button onClick={() => transitionStatus(selected.id, "LOCKED")} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500">Lock</button>
                 )}
@@ -361,6 +409,14 @@ export default function BaselinePage() {
                 )}
               </div>
             </div>
+
+            {/* Counterparty note */}
+            {selected.counterpartyNote && selected.status === "COUNTERED" && (
+              <div className="card border-amber-200 bg-amber-50">
+                <p className="text-xs font-semibold text-amber-600 uppercase">Counterparty Note</p>
+                <p className="mt-1 text-sm text-amber-800 whitespace-pre-line">{selected.counterpartyNote}</p>
+              </div>
+            )}
 
             {/* Tabs */}
             <div className="flex items-center gap-1 border-b border-card-border">
@@ -383,6 +439,12 @@ export default function BaselinePage() {
               </div>
               {selected.status === "DRAFT" && (
                 <>
+                  {clauses.length > 0 && (
+                    <button onClick={acceptAll} className="btn-secondary">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                      Accept All
+                    </button>
+                  )}
                   <button onClick={() => setShowAddClause(true)} className="btn-secondary">
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                     Add Item
@@ -497,18 +559,62 @@ export default function BaselinePage() {
 
       {/* ═══════ Send for Confirmation modal ═══════ */}
       {showConfirmModal && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowConfirmModal(false)}>
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowConfirmModal(false); setConfirmSent(null); }}>
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-zinc-900">Send for Confirmation</h3>
-            <p className="mt-2 text-sm text-muted">Generate a secure magic link for your CDMO counterparty to review and confirm this baseline.</p>
+            <p className="mt-2 text-sm text-muted">Email a secure confirmation link to your CDMO counterparty, or copy a magic link to share manually.</p>
             <div className="mt-4 rounded-lg bg-zinc-50 p-3">
               <p className="text-xs text-muted">Baseline</p>
               <p className="font-medium text-zinc-900">v{selected.version}: {selected.title}</p>
               <p className="mt-1 text-xs text-muted">{clauses.length} truth items</p>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button onClick={() => setShowConfirmModal(false)} className="btn-secondary">Cancel</button>
-              <button onClick={() => createMagicLink(selected.id)} className="btn-primary">Generate Magic Link</button>
+
+            {confirmSent ? (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
+                <p className="text-sm font-medium text-green-800">Confirmation email sent to {confirmSent}</p>
+                <p className="mt-1 text-xs text-green-600">They will receive a link to review and approve or decline.</p>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <ContactSelector
+                  programId={programId}
+                  value={confirmEmail}
+                  onChange={(email) => setConfirmEmail(email)}
+                  label="Recipient Email *"
+                  placeholder="counterparty@cdmo.com"
+                  contactType="CLIENT"
+                />
+                <div>
+                  <label className="text-xs font-medium text-zinc-600">Message (optional)</label>
+                  <textarea
+                    value={confirmMessage}
+                    onChange={(e) => setConfirmMessage(e.target.value)}
+                    placeholder="Please review and confirm the attached baseline..."
+                    rows={2}
+                    className="input mt-1 w-full resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center justify-between">
+              <button onClick={() => createMagicLink(selected.id)} className="text-xs font-medium text-accent hover:text-accent-text">
+                Copy magic link instead
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowConfirmModal(false); setConfirmSent(null); }} className="btn-secondary">
+                  {confirmSent ? "Close" : "Cancel"}
+                </button>
+                {!confirmSent && (
+                  <button
+                    onClick={() => sendConfirmationEmail(selected.id)}
+                    disabled={!confirmEmail.trim() || sendingConfirmation}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    {sendingConfirmation ? "Sending..." : "Send Email"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -570,16 +676,24 @@ function TruthItemCard({ clause, index, programId, isDraft, isReleased, reviewSt
 
       {/* Per-item action buttons */}
       {isDraft && (
-        <div className="flex flex-shrink-0 items-center gap-1">
-          <button onClick={onAccept} title={isAccepted ? "Undo accept" : "Accept"}
-            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-              isAccepted ? "bg-green-100 text-green-600" : "text-zinc-400 hover:bg-green-50 hover:text-green-600"
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <button onClick={onAccept}
+            className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              isAccepted
+                ? "bg-green-100 text-green-700 border border-green-200"
+                : "bg-zinc-100 text-zinc-600 hover:bg-green-50 hover:text-green-700"
             }`}>
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+            {isAccepted ? "Accepted" : "Accept"}
           </button>
-          <button onClick={onReject} title="Reject (remove)"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-red-50 hover:text-red-600">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          <button onClick={() => {
+            if (window.confirm(`Remove "${clause.title}" from this baseline? This cannot be undone.`)) {
+              onReject();
+            }
+          }} title="Remove from baseline"
+            className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 hover:bg-red-50 hover:text-red-600 transition-colors">
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            Remove
           </button>
           <button onClick={onEdit} title="Edit"
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">

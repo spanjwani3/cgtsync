@@ -32,6 +32,8 @@ interface DisputePdfOptions {
   totalAmount: number | null;
   generatedBy: string;
   flaggedItems: FlaggedLineItem[];
+  orgName?: string;
+  logoBuffer?: Buffer;
 }
 
 // ─── Constants ───────────────────────────────────────────────
@@ -122,8 +124,18 @@ export async function generateDisputePdf(
 
     // Header bar
     doc.rect(0, 0, PAGE_W, 70).fill(C.navy);
-    doc.fontSize(18).fillColor(C.white).text("FORENSIC DISPUTE PACKET", MARGIN, 22, { width: USABLE_W });
-    doc.fontSize(8).fillColor("#aabbcc").text("CGT-Sync | Confidential", MARGIN, 48, { width: USABLE_W, align: "left" });
+    let headerTextX = MARGIN;
+    if (options.logoBuffer) {
+      try {
+        doc.image(options.logoBuffer, MARGIN, 18, { width: 30 });
+        headerTextX = MARGIN + 38;
+      } catch {
+        // skip logo on error
+      }
+    }
+    doc.fontSize(18).fillColor(C.white).text("FORENSIC DISPUTE PACKET", headerTextX, 22, { width: USABLE_W - (headerTextX - MARGIN) });
+    const headerLabel = options.orgName ? `CGT-Sync | ${options.orgName} | Confidential` : "CGT-Sync | Confidential";
+    doc.fontSize(8).fillColor("#aabbcc").text(headerLabel, MARGIN, 48, { width: USABLE_W, align: "left" });
     doc.text(`Generated: ${new Date().toISOString().split("T")[0]}`, MARGIN, 48, { width: USABLE_W, align: "right" });
 
     // Program / Invoice info
@@ -367,6 +379,7 @@ export async function generateDisputePdf(
     // ──── Footer on every page ────
     const pageRange = doc.bufferedPageRange();
     const totalPages = pageRange.count;
+    const docId = `DOC-${Date.now()}`;
     for (let i = 0; i < totalPages; i++) {
       doc.switchToPage(i);
       // Bottom line
@@ -384,7 +397,7 @@ export async function generateDisputePdf(
         { width: USABLE_W / 3, align: "center" }
       );
       doc.fontSize(7).fillColor(C.muted).text(
-        new Date().toISOString().split("T")[0],
+        `SHA-256: see filename | ${docId}`,
         MARGIN + (2 * USABLE_W) / 3,
         FOOTER_Y,
         { width: USABLE_W / 3, align: "right" }

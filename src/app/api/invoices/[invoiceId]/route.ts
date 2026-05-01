@@ -28,6 +28,7 @@ export async function GET(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[GET /api/invoices/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -42,10 +43,10 @@ export async function PATCH(
     if (!invoice) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const auth = await requireProgramAccess(invoice.programId, OrgRole.OPERATOR);
     const body = await req.json();
-    const allowedFields = ["invoiceNumber", "vendorName", "invoiceDate", "totalAmount", "currency", "status"];
+    const allowedFields = ["invoiceNumber", "vendorName", "invoiceDate", "dueDate", "totalAmount", "currency", "status"];
     const data: Record<string, unknown> = {};
     for (const f of allowedFields) {
-      if (f in body) data[f] = f === "invoiceDate" ? new Date(body[f]) : body[f];
+      if (f in body) data[f] = (f === "invoiceDate" || f === "dueDate") ? new Date(body[f]) : body[f];
     }
     const updated = await prisma.invoice.update({ where: { id: invoiceId }, data });
 
@@ -69,6 +70,7 @@ export async function PATCH(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[PATCH /api/invoices/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

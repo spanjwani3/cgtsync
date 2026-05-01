@@ -21,6 +21,7 @@ export async function GET(
     const program = await prisma.program.findUnique({
       where: { id: programId },
       include: {
+        assignedPm: { select: { id: true, fullName: true, email: true } },
         _count: {
           select: {
             baselines: true,
@@ -110,12 +111,23 @@ export async function PATCH(
       "currency",
       "retentionDays",
       "changeThreshold",
+      "assignedPmId",
     ];
 
     const data: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (field in body) {
         data[field] = body[field];
+      }
+    }
+
+    // RBAC for PM assignment: Operators can only assign themselves, Admins can assign anyone
+    if ("assignedPmId" in body && body.assignedPmId) {
+      if (auth.role === OrgRole.OPERATOR && body.assignedPmId !== auth.userId) {
+        return NextResponse.json(
+          { requestId, error: "Operators can only assign themselves as PM" },
+          { status: 403 }
+        );
       }
     }
 

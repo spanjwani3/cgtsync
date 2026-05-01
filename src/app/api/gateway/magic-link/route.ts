@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.error("[POST /api/gateway/magic-link] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

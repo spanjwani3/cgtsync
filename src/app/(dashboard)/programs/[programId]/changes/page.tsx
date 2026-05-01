@@ -7,6 +7,7 @@ import { useSyncProgram } from "@/components/layout/useSyncProgram";
 import IngestionModal from "@/components/changes/IngestionModal";
 import ImpactCard from "@/components/changes/ImpactCard";
 import ShadowConfirmModal from "@/components/changes/ShadowConfirmModal";
+import ContactSelector from "@/components/ui/ContactSelector";
 
 interface Change {
   id: string;
@@ -19,6 +20,7 @@ interface Change {
   reasonCode: string | null;
   scheduleImpactDays: number | null;
   confirmationMode: string | null;
+  counterpartyNote: string | null;
   releasedAt: string | null;
   confirmedAt: string | null;
   createdAt: string;
@@ -59,6 +61,13 @@ export default function ChangesPage() {
 
   // Release gate: require reason code, cost impact, and schedule impact before releasing
   const [releaseGate, setReleaseGate] = useState<{ changeId: string; reasonCode: string; estimatedImpact: string; scheduleImpactDays: string } | null>(null);
+
+  // Email confirmation modal
+  const [emailTarget, setEmailTarget] = useState<Change | null>(null);
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState<string | null>(null);
 
   const impactKeyRef = useRef(0);
 
@@ -196,6 +205,55 @@ export default function ChangesPage() {
     }
   }
 
+  async function sendChangeConfirmationEmail(changeId: string) {
+    if (!confirmEmail.trim()) return;
+    setSendingEmail(true);
+    setError("");
+    try {
+      const res = await fetch("/api/gateway/confirmation/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          programId,
+          entityType: "CHANGE",
+          entityId: changeId,
+          recipientEmail: confirmEmail.trim(),
+          message: confirmMessage.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        setEmailSent(confirmEmail.trim());
+        setConfirmEmail("");
+        setConfirmMessage("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Failed to send confirmation email");
+      }
+    } catch {
+      setError("Failed to send confirmation email");
+    }
+    setSendingEmail(false);
+  }
+
+  async function downloadCertificate(changeId: string, seqNum: number) {
+    try {
+      const res = await fetch("/api/gateway/certificate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ programId, entityType: "CHANGE", entityId: changeId }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `certificate-change-${seqNum}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch { /* silent */ }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <div className="flex items-center gap-3 text-sm text-muted">
@@ -303,6 +361,12 @@ export default function ChangesPage() {
 
               <h3 className="mt-2 font-semibold text-zinc-900">{c.title}</h3>
               {c.description && <p className="mt-1 text-sm text-muted line-clamp-2">{c.description}</p>}
+              {c.counterpartyNote && c.status === "COUNTERED" && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase text-amber-600">Counterparty Note</p>
+                  <p className="mt-0.5 text-xs text-amber-800">{c.counterpartyNote}</p>
+                </div>
+              )}
 
               <div className="mt-3 flex items-center gap-4">
                 {impact !== null && (
@@ -340,19 +404,41 @@ export default function ChangesPage() {
                 )}
                 {c.status === "RELEASED" && (
                   <>
-                    <button onClick={() => sendMagicLink(c.id)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
-                      Send Magic Link
+                    <button onClick={() => { setEmailTarget(c); setEmailSent(null); }} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+                      Email for Confirmation
+                    </button>
+                    <button onClick={() => sendMagicLink(c.id)} className="text-xs font-medium text-accent hover:text-accent-text">
+                      Copy Link
                     </button>
                     <button onClick={() => setShadowTarget(c)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">
                       Confirm with Evidence
                     </button>
                   </>
                 )}
+                {c.status === "COUNTERED" && (
+                  <>
+                    <button onClick={() => transitionChange(c.id, "RELEASED")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+                      Re-release
+                    </button>
+                    <button onClick={() => sendMagicLink(c.id)} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500">
+                      Send New Link
+                    </button>
+                  </>
+                )}
                 {(c.status === "CONFIRMED" || c.status === "LOGGED") && (
-                  <span className="flex items-center gap-1 text-xs text-green-600">
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
-                    Finalized
-                  </span>
+                  <>
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                      Finalized
+                    </span>
+                    <button
+                      onClick={() => downloadCertificate(c.id, c.sequenceNum)}
+                      className="rounded-lg border border-card-border px-2 py-1 text-xs text-muted hover:bg-zinc-50 hover:text-zinc-700"
+                      title="Download Certificate"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><polyline points="9 15 12 18 15 15" /></svg>
+                    </button>
+                  </>
                 )}
                 <button onClick={() => setSelectedChange(c)} className="ml-auto text-xs font-medium text-accent hover:text-accent-text">View Details</button>
               </div>
@@ -419,6 +505,14 @@ export default function ChangesPage() {
               <p className="mt-1 text-sm font-medium text-zinc-900">{new Date(selectedChange.createdAt).toLocaleString()}</p>
             </div>
 
+            {/* Counterparty note */}
+            {selectedChange.counterpartyNote && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-600 uppercase">Counterparty Note</p>
+                <p className="mt-1 text-sm text-amber-800 whitespace-pre-line">{selectedChange.counterpartyNote}</p>
+              </div>
+            )}
+
             {/* Release gate: require Days + Dollars + Reason before releasing */}
             {releaseGate && releaseGate.changeId === selectedChange.id && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
@@ -473,15 +567,89 @@ export default function ChangesPage() {
               )}
               {selectedChange.status === "RELEASED" && (
                 <>
-                  <button onClick={() => sendMagicLink(selectedChange.id)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
-                    Send Magic Link
+                  <button onClick={() => { setEmailTarget(selectedChange); setEmailSent(null); setSelectedChange(null); }} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                    Email for Confirmation
+                  </button>
+                  <button onClick={() => sendMagicLink(selectedChange.id)} className="text-sm font-medium text-accent hover:text-accent-text">
+                    Copy Link
                   </button>
                   <button onClick={() => { setSelectedChange(null); setShadowTarget(selectedChange); }} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500">
                     Confirm with Evidence
                   </button>
                 </>
               )}
+              {selectedChange.status === "COUNTERED" && (
+                <>
+                  <button onClick={() => { transitionChange(selectedChange.id, "RELEASED"); }} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                    Re-release
+                  </button>
+                  <button onClick={() => sendMagicLink(selectedChange.id)} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500">
+                    Send New Link
+                  </button>
+                </>
+              )}
               <button onClick={() => { setSelectedChange(null); setReleaseGate(null); }} className="btn-secondary">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email confirmation modal */}
+      {emailTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setEmailTarget(null); setEmailSent(null); }}>
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-zinc-900">Email for Confirmation</h3>
+            <p className="mt-2 text-sm text-muted">Send a confirmation email to your CDMO counterparty for this change order.</p>
+            <div className="mt-4 rounded-lg bg-zinc-50 p-3">
+              <p className="text-xs text-muted">Change #{emailTarget.sequenceNum}</p>
+              <p className="font-medium text-zinc-900">{emailTarget.title}</p>
+              <div className="mt-1 flex gap-3 text-xs text-muted">
+                <span>{emailTarget.severity}</span>
+                {emailTarget.estimatedImpact && <span>${Number(emailTarget.estimatedImpact).toLocaleString()}</span>}
+              </div>
+            </div>
+
+            {emailSent ? (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
+                <p className="text-sm font-medium text-green-800">Confirmation email sent to {emailSent}</p>
+                <p className="mt-1 text-xs text-green-600">They will receive a link to review and approve or decline.</p>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <ContactSelector
+                  programId={programId}
+                  value={confirmEmail}
+                  onChange={(email) => setConfirmEmail(email)}
+                  label="Recipient Email *"
+                  placeholder="counterparty@cdmo.com"
+                  contactType="CLIENT"
+                />
+                <div>
+                  <label className="text-xs font-medium text-zinc-600">Message (optional)</label>
+                  <textarea
+                    value={confirmMessage}
+                    onChange={(e) => setConfirmMessage(e.target.value)}
+                    placeholder="Please review and confirm this change order..."
+                    rows={2}
+                    className="input mt-1 w-full resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => { setEmailTarget(null); setEmailSent(null); }} className="btn-secondary">
+                {emailSent ? "Close" : "Cancel"}
+              </button>
+              {!emailSent && (
+                <button
+                  onClick={() => sendChangeConfirmationEmail(emailTarget.id)}
+                  disabled={!confirmEmail.trim() || sendingEmail}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {sendingEmail ? "Sending..." : "Send Email"}
+                </button>
+              )}
             </div>
           </div>
         </div>
