@@ -1,0 +1,5 @@
+# Customer contracts dropped here for preload-tenant-docs.ts.
+# Never commit them.
+*
+!.gitignore
+!README.md

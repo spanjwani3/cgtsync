@@ -243,6 +243,8 @@ model Program {
   retentionDays   Int?          @map("retention_days")
   activatedAt     DateTime?     @map("activated_at")
   changeThreshold Decimal?      @map("change_threshold") @db.Decimal(14, 2)
+  inboundEmailAddress    String?  @unique @map("inbound_email_address")
+  inboundSenderAllowlist String[] @default([]) @map("inbound_sender_allowlist")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -390,6 +392,9 @@ model Evidence {
   storagePath String       @map("storage_path")
   sha256Hash  String       @map("sha256_hash")
   metadata    Json?        @default("{}")
+  rawHeaders  String?      @map("raw_headers")
+  rawMime     String?      @map("raw_mime")
+  inboundMessageId String? @unique @map("inbound_message_id")
   finalized   Boolean      @default(false)
   finalizedAt DateTime?    @map("finalized_at")
   retainUntil DateTime?    @map("retain_until")

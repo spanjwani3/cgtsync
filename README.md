@@ -31,7 +31,7 @@ CGT-Sync is not a task or PM tool. It is an audit-ready governance platform that
 
 ## Security Posture
 
-- **Single tenant per pilot**: one Supabase project per customer org
+- **Multi-tenant by design**: one shared Supabase project, tenant isolation via `org_id` and Row Level Security on every table. Each customer gets their own subdomain (`<slug>.cgtsync.ai`) resolved by middleware to the matching `Organization`.
 - **Row Level Security (RLS)** on all tables with org_id + program_id scoping
 - **Private storage buckets** with short-TTL signed URLs (5 min)
 - **SHA-256 hashing** on all uploaded evidence files
@@ -145,7 +145,7 @@ src/
 │   │   ├── pdf.ts        PDF generation
 │   │   └── storage.ts    Supabase storage + SHA-256
 │   └── supabase/         Supabase client helpers
-└── middleware.ts          Session refresh middleware
+└── middleware.ts          Subdomain → tenant resolution + session refresh
 ```
 
 ## RBAC Roles
@@ -174,6 +174,49 @@ If a change's estimated impact is below the program's `changeThreshold`, it auto
 - **SCOPE_CREEP**: Manual flag for out-of-scope work
 - **UNAPPROVED_CHANGE**: Charge mapped to unconfirmed change
 - **DUPLICATE**: Potential duplicate line item
+
+### Inbound-Email Candidate Reconciliation
+
+Each program may have an `inboundEmailAddress` (e.g., `cellipont@inbox.cgtsync.ai`).
+Forwarded meeting notes / cc'd email correspondence land at the Postmark Inbound
+webhook (`/api/gateway/inbound-email`), are stored as Evidence with
+SPF/DKIM provenance, and any extracted candidate changes are immediately
+reconciled against the locked baseline + confirmed changes:
+
+- **IN_BASELINE** — discussion of in-scope work; not creep
+- **ALREADY_CONFIRMED** — already covered by a confirmed change order
+- **SCOPE_CREEP_CANDIDATE** — net-new scope for PM review
+- **NEEDS_VERIFICATION** — sender failed SPF/DKIM or isn't on the program's `inboundSenderAllowlist`
+
+## Tenant Onboarding (multi-tenant prod)
+
+```bash
+# 1. Create org, program, admin users (mints magic links to stdout):
+npx tsx scripts/onboard-tenant.ts \
+  --slug cellipont \
+  --name "Cellipont" \
+  --program "Cellipont — CDMO Manufacturing" \
+  --cdmo "Cellipont" \
+  --admin jkuzniar@cellipont.com,dkommireddy@cellipont.com,ebeale@cellipont.com \
+  --inbound cellipont@inbox.cgtsync.ai \
+  --allow-domain cellipont.com
+
+# 2. Drop their PDFs in scripts/tenant-seed-docs/<slug>/, then:
+npx tsx scripts/preload-tenant-docs.ts \
+  --slug cellipont \
+  --program "Cellipont — CDMO Manufacturing" \
+  --dir scripts/tenant-seed-docs/cellipont \
+  --actor <samir-supabase-user-id>
+```
+
+DNS for the platform: wildcard `CNAME *.cgtsync.ai → cname.vercel-dns.com`,
+`MX inbox.cgtsync.ai 10 inbound.postmarkapp.com`, plus an SPF TXT for `inbox`.
+
+Set `MULTI_TENANT_MODE=true` and `ROOT_DOMAIN=cgtsync.ai` in production env.
+Disable public signups in Supabase Auth → Providers → Email.
+
+For local dev with subdomains use `<slug>.localhost:3000` (modern browsers
+resolve this automatically).
 
 ## Scripts
 

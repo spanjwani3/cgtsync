@@ -29,6 +29,9 @@ interface HealthData {
     supabase_project_consistent?: boolean;
     supabase_project_refs?: Record<string, string | null>;
     supabase_project_mismatch?: string | null;
+    multi_tenant_mode?: boolean;
+    multi_tenant_mode_raw_present?: boolean;
+    root_domain?: string | null;
   };
 }
 
@@ -330,6 +333,47 @@ export default function AdminHealthPage() {
           <p className="text-zinc-400 mt-2">
             Without these settings, signup confirmation emails and magic links will redirect to the wrong URL.
           </p>
+        </div>
+      </div>
+
+      <div className="mt-8 space-y-3">
+        <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wide">
+          Tenancy
+        </h2>
+        <div className="rounded-md border px-4 py-3 space-y-2 text-sm">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-zinc-700">MULTI_TENANT_MODE</span>
+            <span
+              className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${
+                c.multi_tenant_mode
+                  ? "bg-green-100 text-green-700"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {c.multi_tenant_mode ? "ON" : "OFF"}
+            </span>
+          </div>
+          {!c.multi_tenant_mode && c.multi_tenant_mode_raw_present && (
+            <p className="text-xs text-red-600">
+              Variable is set but not equal to literal string <span className="font-mono">"true"</span>.
+              Check for whitespace, casing (must be lowercase), or quotes around the value in Vercel.
+            </p>
+          )}
+          {!c.multi_tenant_mode && !c.multi_tenant_mode_raw_present && (
+            <p className="text-xs text-zinc-500">
+              Single-tenant fallback. To enable subdomain → org routing,
+              add <span className="font-mono">MULTI_TENANT_MODE=true</span> in
+              Vercel → Settings → Environment Variables (Production scope) and redeploy.
+              Note: Vercel does not echo stored values back in the edit form &mdash; a blank
+              value field after save does not mean the variable is unset.
+            </p>
+          )}
+          <div className="flex items-center gap-3 pt-1">
+            <span className="font-mono text-zinc-700">ROOT_DOMAIN</span>
+            <span className="font-mono text-xs text-zinc-600">
+              {c.root_domain ?? "(not set — defaults to cgtsync.ai)"}
+            </span>
+          </div>
         </div>
       </div>
 
