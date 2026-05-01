@@ -86,6 +86,14 @@ export async function GET() {
     // 7. Supabase project consistency — verify all env vars point to same project
     const supabase_consistency = checkSupabaseProjectConsistency();
 
+    // 8. Tenancy mode — surface runtime values directly so a Vercel UI quirk
+    // (env var edit form shows blank for stored values) can't mask whether
+    // MULTI_TENANT_MODE actually took. multi_tenant_mode_raw_present
+    // distinguishes "var unset" from "var set but not literally 'true'".
+    const multi_tenant_mode = process.env.MULTI_TENANT_MODE === "true";
+    const multi_tenant_mode_raw_present = !!process.env.MULTI_TENANT_MODE;
+    const root_domain = process.env.ROOT_DOMAIN ?? null;
+
     const all_ok =
       db_ok &&
       migrations_ok &&
@@ -118,6 +126,9 @@ export async function GET() {
         supabase_project_consistent: supabase_consistency.ok,
         supabase_project_refs: supabase_consistency.refs,
         supabase_project_mismatch: supabase_consistency.mismatch,
+        multi_tenant_mode,
+        multi_tenant_mode_raw_present,
+        root_domain,
       },
     });
   } catch (e) {
