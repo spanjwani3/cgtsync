@@ -79,7 +79,7 @@ function buildReconciliationPrompt(
               `- ID:${c.id} Ref:${c.clauseRef ?? "N/A"} "${c.title}" — Value: ${c.value ?? "N/A"} ${c.unit ?? ""} (Type: ${c.type})`,
           )
           .join("\n")
-      : "(No baseline clauses available)";
+      : "(No locked baseline clauses found — lock a baseline before reconciling invoices)";
 
   const changesBlock =
     changes.length > 0
@@ -142,8 +142,16 @@ Return ONLY valid JSON, no markdown fences.`;
 
 // ─── Main reconciliation function ────────────────────────────
 
+export interface MissingChange {
+  changeId: string;
+  sequenceNum: number;
+  title: string;
+  estimatedImpact: number | null;
+  status: string;
+}
+
 export interface ReconciliationResult {
-  stats: { matched: number; flagged: number; unmapped: number; total: number };
+  stats: { matched: number; flagged: number; unmapped: number; total: number; missingChanges: number };
   summary: string;
   mappings: Array<{
     lineItemId: string;
@@ -154,6 +162,7 @@ export interface ReconciliationResult {
     flagNote: string | null;
     reasoning: string;
   }>;
+  missingChanges: MissingChange[];
 }
 
 export async function reconcileInvoice(
@@ -188,7 +197,7 @@ export async function reconcileInvoice(
   });
 
   if (lineItems.length === 0) {
-    return { stats: { matched: 0, flagged: 0, unmapped: 0, total: 0 }, summary: "No line items to reconcile", mappings: [] };
+    return { stats: { matched: 0, flagged: 0, unmapped: 0, total: 0, missingChanges: 0 }, summary: "No line items to reconcile", mappings: [], missingChanges: [] };
   }
 
   // 3. Build clause and change input lists
@@ -229,7 +238,7 @@ export async function reconcileInvoice(
     }
     await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "FLAGGED" } });
     return {
-      stats: { matched: 0, flagged: lineItems.length, unmapped: 0, total: lineItems.length },
+      stats: { matched: 0, flagged: lineItems.length, unmapped: 0, total: lineItems.length, missingChanges: 0 },
       summary: "No baseline or confirmed changes found. All items flagged as MISSING_BASELINE.",
       mappings: lineItems.map((li) => ({
         lineItemId: li.id,
@@ -240,6 +249,7 @@ export async function reconcileInvoice(
         flagNote: "No locked baseline or confirmed changes exist for this program",
         reasoning: "No truth sources available",
       })),
+      missingChanges: [],
     };
   }
 
@@ -339,24 +349,67 @@ export async function reconcileInvoice(
     results.push({ lineItemId: li.id, matchType, matchId, confidence, flag, flagNote, reasoning });
   }
 
-  // 7. Update invoice status
-  const newStatus = flagged > 0 ? "FLAGGED" : "MAPPED";
+  // 7. Detect missing changes — confirmed/logged changes with no matching line items
+  const referencedChangeIds = new Set(
+    results.filter((r) => r.matchType === "CHANGE" && r.matchId).map((r) => r.matchId!),
+  );
+  const missingChanges: MissingChange[] = changeInputs
+    .filter((c) => !referencedChangeIds.has(c.id))
+    .map((c) => ({
+      changeId: c.id,
+      sequenceNum: c.sequenceNum,
+      title: c.title,
+      estimatedImpact: c.estimatedImpact,
+      status: c.status,
+    }));
+
+  // If there are missing changes, the invoice should be flagged
+  const hasMissingChanges = missingChanges.length > 0;
+  if (hasMissingChanges) flagged++;
+
+  // 8. Update invoice status
+  const newStatus = flagged > 0 || hasMissingChanges ? "FLAGGED" : "MAPPED";
   await prisma.invoice.update({ where: { id: invoiceId }, data: { status: newStatus } });
 
-  // 8. Log reconciliation event
+  // 9. Log reconciliation event
   await logEvent({
     programId,
     userId,
     action: "INVOICE_MAPPED",
     entityType: "Invoice",
     entityId: invoiceId,
-    metadata: { matched, flagged, unmapped, total: lineItems.length, aiReconciled: true },
+    metadata: {
+      matched,
+      flagged,
+      unmapped,
+      total: lineItems.length,
+      missingChanges: missingChanges.length,
+      aiReconciled: true,
+    },
   });
 
+  // Log each missing change individually
+  for (const mc of missingChanges) {
+    await logEvent({
+      programId,
+      userId,
+      action: "LINE_ITEM_FLAGGED",
+      entityType: "Invoice",
+      entityId: invoiceId,
+      metadata: {
+        flag: "MISSING_CHANGE",
+        flagNote: `Confirmed Change #${mc.sequenceNum} "${mc.title}" (impact: ${mc.estimatedImpact != null ? `$${mc.estimatedImpact.toLocaleString()}` : "N/A"}) is not reflected in any invoice line item`,
+        changeId: mc.changeId,
+        auto: true,
+      },
+    });
+  }
+
   return {
-    stats: { matched, flagged, unmapped, total: lineItems.length },
+    stats: { matched, flagged, unmapped, total: lineItems.length, missingChanges: missingChanges.length },
     summary: reconciliation.summary,
     mappings: results,
+    missingChanges,
   };
 }
 

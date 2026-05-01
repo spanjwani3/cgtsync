@@ -57,6 +57,7 @@ export default function InvoiceDetailPage() {
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [reconciling, setReconciling] = useState(false);
+  const [missingChanges, setMissingChanges] = useState<Array<{ changeId: string; sequenceNum: number; title: string; estimatedImpact: number | null; status: string }>>([]);
   const [filter, setFilter] = useState<"ALL" | "MATCHED" | "FLAGGED" | "UNMAPPED">("ALL");
 
   useSyncProgram();
@@ -119,9 +120,14 @@ export default function InvoiceDetailPage() {
   async function reconcile() {
     setReconciling(true);
     setError("");
+    setMissingChanges([]);
     try {
       const res = await fetch(`/api/invoices/${invoiceId}/reconcile`, { method: "POST" });
       if (res.ok) {
+        const data = await res.json();
+        if (data.missingChanges?.length > 0) {
+          setMissingChanges(data.missingChanges);
+        }
         await loadInvoice();
       } else {
         const data = await res.json();
@@ -220,6 +226,42 @@ export default function InvoiceDetailPage() {
       </div>
 
       {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {/* Missing Changes Alert */}
+      {missingChanges.length > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-800">
+                {missingChanges.length} Confirmed Change{missingChanges.length !== 1 ? "s" : ""} Not Reflected in Invoice
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                The following confirmed change orders are not referenced by any line item on this invoice.
+                The vendor may not have incorporated these agreed-upon changes.
+              </p>
+              <div className="mt-3 space-y-2">
+                {missingChanges.map((mc) => (
+                  <div key={mc.changeId} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2">
+                    <div>
+                      <span className="text-xs font-semibold text-purple-700">Change #{mc.sequenceNum}</span>
+                      <span className="ml-2 text-sm text-zinc-900">{mc.title}</span>
+                    </div>
+                    {mc.estimatedImpact != null && (
+                      <span className="text-sm font-bold text-zinc-900">
+                        {mc.estimatedImpact >= 0 ? "+" : ""}${Math.abs(mc.estimatedImpact).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary Bar */}
       <div className="mt-6 flex flex-wrap items-center gap-3">

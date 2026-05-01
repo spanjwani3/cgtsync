@@ -24,14 +24,20 @@ export const CHANGE_BASE_SELECT = {
 } as const;
 
 /**
+ * All four extended columns that must exist for the extended select.
+ */
+const EXTENDED_COLUMNS = ["reason_code", "schedule_impact_days", "confirmation_mode", "counterparty_note"] as const;
+
+/**
  * Extended select that includes post-migration columns.
- * Only use this after confirming the migration has been applied.
+ * Only use this after confirming ALL extended columns exist.
  */
 export const CHANGE_EXTENDED_SELECT = {
   ...CHANGE_BASE_SELECT,
   reasonCode: true,
   scheduleImpactDays: true,
   confirmationMode: true,
+  counterpartyNote: true,
 } as const;
 
 /**
@@ -43,15 +49,19 @@ export const CHANGE_INCLUDE_SELECT = { select: CHANGE_BASE_SELECT } as const;
 let _migrationApplied: boolean | null = null;
 
 /**
- * Detects at runtime whether the change reason/schedule/confirmation migration
- * has been applied. Result is cached per server lifecycle (per cold start on Vercel).
+ * Detects at runtime whether ALL extended change columns exist in the database.
+ * Uses information_schema for reliable detection (works with any Prisma adapter).
+ * Result is cached per server lifecycle (per cold start on Vercel).
  */
 export async function hasChangeExtendedColumns(prisma: { $queryRawUnsafe: (q: string) => Promise<unknown> }): Promise<boolean> {
   if (_migrationApplied !== null) return _migrationApplied;
   try {
-    await prisma.$queryRawUnsafe("SELECT reason_code FROM changes LIMIT 0");
-    _migrationApplied = true;
-  } catch {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'changes' AND column_name IN ('reason_code', 'schedule_impact_days', 'confirmation_mode', 'counterparty_note')`
+    ) as Array<{ column_name: string }>;
+    _migrationApplied = rows.length === EXTENDED_COLUMNS.length;
+  } catch (e) {
+    console.error("Change compat detection error:", e);
     _migrationApplied = false;
   }
   return _migrationApplied;

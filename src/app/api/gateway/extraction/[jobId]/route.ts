@@ -29,6 +29,7 @@ export async function GET(
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN")
       return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
+    console.error("[GET /api/gateway/extraction/:jobId] Unhandled error:", e);
     return NextResponse.json(
       { requestId, error: "Internal server error" },
       { status: 500 }

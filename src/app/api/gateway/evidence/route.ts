@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
     await requireProgramAccess(programId);
     const evidences = await prisma.evidence.findMany({
       where: { programId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { originalDate: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
     });
     return NextResponse.json(evidences);
   } catch (e) {
@@ -32,6 +35,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN")
       return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
+    console.error("[GET /api/gateway/evidence] Unhandled error:", e);
     return NextResponse.json(
       { requestId, error: "Internal server error" },
       { status: 500 }
@@ -76,6 +80,7 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File | null;
     const type = formData.get("type") as string | null;
     programId = formData.get("programId") as string | null;
+    const originalDateRaw = formData.get("originalDate") as string | null;
 
     if (!file || !type || !programId) {
       return NextResponse.json(
@@ -98,6 +103,19 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    let originalDate: Date | null = null;
+    if (originalDateRaw) {
+      const parsed = new Date(originalDateRaw);
+      if (isNaN(parsed.getTime())) {
+        return NextResponse.json(
+          { requestId, error: "originalDate must be a valid ISO date string" },
+          { status: 400 }
+        );
+      }
+      originalDate = parsed;
+    }
+    const isBackloaded = originalDate !== null;
 
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
     userId = auth.userId;
@@ -128,13 +146,15 @@ export async function POST(req: NextRequest) {
         storagePath: result.storagePath,
         sha256Hash: result.sha256Hash,
         retainUntil,
+        originalDate,
+        isBackloaded,
       },
     });
 
     await logEvent({
       programId,
       userId: auth.userId,
-      action: "EVIDENCE_UPLOADED",
+      action: isBackloaded ? "EVIDENCE_BACKLOADED" : "EVIDENCE_UPLOADED",
       entityType: "Evidence",
       entityId: evidence.id,
       metadata: {
@@ -142,6 +162,7 @@ export async function POST(req: NextRequest) {
         fileSize: result.fileSize,
         sha256Hash: result.sha256Hash,
         type,
+        ...(isBackloaded && originalDate ? { originalDate: originalDate.toISOString() } : {}),
       },
       ipAddress: getClientIp(req.headers),
     });

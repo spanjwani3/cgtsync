@@ -11,7 +11,12 @@ export async function GET(req: NextRequest) {
     await requireProgramAccess(programId);
     const invoices = await prisma.invoice.findMany({
       where: { programId },
-      include: { _count: { select: { lineItems: true } } },
+      include: {
+        _count: { select: { lineItems: true } },
+        reminderSchedule: {
+          select: { id: true, isActive: true, nextSendAt: true, reminderCount: true, escalationTier: true },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(invoices);
@@ -20,6 +25,7 @@ export async function GET(req: NextRequest) {
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    console.error("[GET /api/invoices] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -27,13 +33,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { programId, invoiceNumber, vendorName, invoiceDate, totalAmount, currency, evidenceFileId } = body;
+    const { programId, invoiceNumber, vendorName, invoiceDate, dueDate, totalAmount, currency, evidenceFileId } = body;
     if (!programId) return NextResponse.json({ error: "programId required" }, { status: 400 });
     const auth = await requireProgramAccess(programId, OrgRole.OPERATOR);
     const invoice = await prisma.invoice.create({
       data: {
         programId, invoiceNumber: invoiceNumber ?? null, vendorName: vendorName ?? null,
         invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
+        dueDate: dueDate ? new Date(dueDate) : null,
         totalAmount: totalAmount ?? null, currency: currency ?? "USD",
         evidenceFileId: evidenceFileId ?? null,
       },
@@ -49,6 +56,7 @@ export async function POST(req: NextRequest) {
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    console.error("[POST /api/invoices] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

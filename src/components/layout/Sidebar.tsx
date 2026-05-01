@@ -90,12 +90,31 @@ function LogOutIcon({ className }: { className?: string }) {
   );
 }
 
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 function DownloadIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function UploadIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   );
 }
@@ -109,16 +128,53 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
+function GridIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function UsersIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 /* ───── Nav config ───── */
+
+function RadarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="2" x2="12" y2="12" />
+      <path d="M12 12l5.66 5.66" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
 
 const PROGRAM_NAV = [
   { key: "cockpit", label: "Cockpit", icon: LayoutIcon },
   { key: "baseline", label: "Baseline Truth", icon: LockIcon },
   { key: "changes", label: "Change Events", icon: GitBranchIcon },
+  { key: "scope", label: "Scope Monitor", icon: RadarIcon },
   { key: "invoices", label: "Reconciliation", icon: DollarIcon },
   { key: "evidence", label: "Evidence Log", icon: FileIcon },
+  { key: "import", label: "Import Data", icon: UploadIcon },
   { key: "timeline", label: "Commitment Timeline", icon: ClockIcon },
   { key: "exports", label: "Export Center", icon: DownloadIcon },
+  { key: "contacts", label: "Contacts", icon: UsersIcon },
 ];
 
 /* ───── Component ───── */
@@ -153,7 +209,7 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
       {/* Logo */}
       <div className="flex h-14 items-center gap-2.5 px-5">
         <ShieldIcon className="h-6 w-6 text-sidebar-active" />
-        <Link href="/programs" className="text-base font-bold tracking-tight text-sidebar-text-bright">
+        <Link href="/dashboard" className="text-base font-bold tracking-tight text-sidebar-text-bright">
           CGT-Sync
         </Link>
       </div>
@@ -203,6 +259,17 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
                 Audit Log
               </button>
               <Link
+                href="/dashboard"
+                className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+                  pathname === "/dashboard"
+                    ? "bg-sidebar-active font-medium text-white"
+                    : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+                }`}
+              >
+                <GridIcon className="h-4 w-4 flex-shrink-0" />
+                Dashboard
+              </Link>
+              <Link
                 href="/programs"
                 className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
               >
@@ -220,6 +287,17 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
           </>
         ) : (
           <>
+            <Link
+              href="/dashboard"
+              className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+                pathname === "/dashboard"
+                  ? "bg-sidebar-active font-medium text-white"
+                  : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+              }`}
+            >
+              <GridIcon className="h-4 w-4 flex-shrink-0" />
+              Dashboard
+            </Link>
             <Link
               href="/programs"
               className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
@@ -258,9 +336,16 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
           </div>
         </div>
         <p className="mt-1 truncate px-2 text-[10px] font-medium uppercase tracking-wider text-sidebar-text">{orgName}</p>
+        <Link
+          href="/settings"
+          className="mt-2 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+        >
+          <SettingsIcon className="h-3.5 w-3.5" />
+          Settings
+        </Link>
         <button
           onClick={handleLogout}
-          className="mt-2 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+          className="mt-1 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-bright"
         >
           <LogOutIcon className="h-3.5 w-3.5" />
           Sign Out

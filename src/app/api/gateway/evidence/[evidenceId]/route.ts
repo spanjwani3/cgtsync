@@ -20,6 +20,7 @@ export async function GET(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[GET /api/gateway/evidence/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -49,6 +50,7 @@ export async function POST(
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error("[POST /api/gateway/evidence/:id] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

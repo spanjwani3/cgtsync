@@ -1,26 +1,106 @@
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 
-export default async function ProgramsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+interface ProgramItem {
+  id: string;
+  name: string;
+  cdmoName: string;
+  molecule: string | null;
+  modality: string | null;
+  status: string;
+  assignedPmId: string | null;
+  assignedPm: { id: string; fullName: string | null; email: string } | null;
+  _count: { baselines: number; changes: number; invoices: number };
+}
 
-  const membership = await prisma.orgMember.findFirst({
-    where: { userId: user.id },
-    select: { orgId: true },
+interface OrgMember {
+  id: string;
+  fullName: string | null;
+  email: string;
+  role: string;
+}
+
+export default function ProgramsPage() {
+  const [programs, setPrograms] = useState<ProgramItem[]>([]);
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterPm, setFilterPm] = useState<string>("");
+  const [myOnly, setMyOnly] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("cgtsync_my_programs") === "true";
+    }
+    return false;
   });
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const programs = membership
-    ? await prisma.program.findMany({
-        where: { orgId: membership.orgId },
-        include: { _count: { select: { baselines: true, changes: true, invoices: true } } },
-        orderBy: { createdAt: "desc" },
+  const loadPrograms = useCallback(async () => {
+    setLoading(true);
+    try {
+      let url = "/api/programs";
+      if (filterPm) url += `?assignedPmId=${filterPm}`;
+      else if (myOnly && currentUserId) url += `?assignedPmId=${currentUserId}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setPrograms(data.programs);
+      }
+    } catch {
+      // silent
+    }
+    setLoading(false);
+  }, [filterPm, myOnly, currentUserId]);
+
+  useEffect(() => {
+    // Load members for filter dropdown
+    fetch("/api/org/members")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.members) setMembers(data.members);
       })
-    : [];
+      .catch(() => {});
+
+    // Get current user ID
+    fetch("/api/programs")
+      .then((res) => res.ok ? res.json() : null)
+      .catch(() => null);
+  }, []);
+
+  // Get current user from a lightweight call
+  useEffect(() => {
+    fetch("/api/org/members")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.members) {
+          // The first member is usually the current user, but we need the actual current user
+          // We'll get it from the auth context by checking which programs the user can see
+          setMembers(data.members);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadPrograms();
+  }, [loadPrograms]);
+
+  function toggleMyPrograms() {
+    const newVal = !myOnly;
+    setMyOnly(newVal);
+    setFilterPm("");
+    if (typeof window !== "undefined") {
+      localStorage.setItem("cgtsync_my_programs", String(newVal));
+    }
+  }
+
+  function getInitials(name: string | null, email: string): string {
+    if (name) {
+      return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+    }
+    return email[0].toUpperCase();
+  }
 
   return (
     <div>
@@ -36,14 +116,53 @@ export default async function ProgramsPage() {
         </Link>
       </div>
 
-      {programs.length === 0 ? (
+      {/* Filter Bar */}
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          onClick={toggleMyPrograms}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            myOnly
+              ? "bg-zinc-900 text-white"
+              : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+          }`}
+        >
+          {myOnly ? "My Programs" : "All Programs"}
+        </button>
+
+        {members.length > 1 && (
+          <select
+            value={filterPm}
+            onChange={(e) => { setFilterPm(e.target.value); setMyOnly(false); }}
+            className="rounded-md border border-zinc-300 px-2 py-1.5 text-xs text-zinc-700"
+          >
+            <option value="">All PMs</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.fullName ?? m.email}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {loading && (
+          <span className="text-xs text-zinc-400">Loading...</span>
+        )}
+      </div>
+
+      {!loading && programs.length === 0 ? (
         <div className="mt-16 flex flex-col items-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-light">
             <svg className="h-8 w-8 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
           </div>
-          <p className="mt-4 font-medium text-zinc-900">No programs yet</p>
-          <p className="mt-1 text-sm text-muted">Create your first program to get started</p>
-          <Link href="/onboarding" className="btn-primary mt-5">Create Program</Link>
+          <p className="mt-4 font-medium text-zinc-900">
+            {myOnly || filterPm ? "No matching programs" : "No programs yet"}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {myOnly || filterPm ? "Try changing your filter" : "Create your first program to get started"}
+          </p>
+          {!myOnly && !filterPm && (
+            <Link href="/onboarding" className="btn-primary mt-5">Create Program</Link>
+          )}
         </div>
       ) : (
         <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -70,6 +189,19 @@ export default async function ProgramsPage() {
                   {[p.molecule, p.modality].filter(Boolean).join(" · ")}
                 </p>
               )}
+
+              {/* PM Badge */}
+              {p.assignedPm && (
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-semibold text-zinc-600">
+                    {getInitials(p.assignedPm.fullName, p.assignedPm.email)}
+                  </span>
+                  <span className="text-xs text-zinc-500">
+                    {p.assignedPm.fullName ?? p.assignedPm.email}
+                  </span>
+                </div>
+              )}
+
               <div className="mt-4 flex gap-4 border-t border-card-border pt-3 text-xs text-muted">
                 <span className="flex items-center gap-1">
                   <span className="font-semibold text-zinc-700">{p._count.baselines}</span> baselines

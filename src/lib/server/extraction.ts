@@ -17,7 +17,7 @@ const MIN_EXCERPT_WORDS = 10;
 function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
-  return new Anthropic({ apiKey });
+  return new Anthropic({ apiKey, maxRetries: 4 });
 }
 
 // ─── Provenance: every extracted row carries these ────────────
@@ -190,6 +190,7 @@ function getSchemaForTarget(targetType: ExtractionTargetType): z.ZodTypeAny {
     case "CHANGE_TRANSCRIPT": return TranscriptExtractionSchema;
     case "CHANGE_EMAIL": return EmailExtractionSchema;
     case "TERMS": return TermsExtractionSchema;
+    case "SCOPE_ANALYSIS": return TranscriptExtractionSchema;
   }
 }
 
@@ -202,16 +203,42 @@ For EVERY extracted item/row, you MUST include:
 - "page": The page number where this item appears (integer, or null if unknown).
 - "confidence": Your confidence in this extraction from 0.0 to 1.0 (e.g., 0.95 for clear text, 0.6 for inferred).`;
 
-const BASELINE_PROMPT = `You are an expert contract analyst for biopharma outsourcing agreements. Extract all contract clauses/terms from this document.
+const BASELINE_PROMPT = `You are an expert contract analyst for biopharma outsourcing agreements. Extract ONLY the invoice-relevant terms from this document — the items a finance team would use to verify and reconcile invoices.
 
-For each clause, provide:
+FOCUS ON extracting:
+- PRICING: Every distinct cost, fee, rate, or price (manufacturing costs, testing fees, storage charges, pass-through costs, etc.)
+- PAYMENT_TERMS: Payment schedules, net terms, milestone payments, invoicing frequency
+- TIMELINE: Key delivery timelines and lead times that affect payment milestones
+- SCOPE: Core deliverables that have associated costs (e.g., "10 batches per year", "stability testing included")
+
+DO NOT extract:
+- Legal/boilerplate clauses (indemnification, liability caps, limitation of liability, warranties)
+- IP ownership, confidentiality, or data protection clauses
+- Governing law, jurisdiction, or dispute resolution
+- Force majeure, termination, or assignment clauses
+- Insurance requirements, representations, or general obligations
+- Regulatory compliance clauses (unless they specify billable activities with costs)
+Exception: Include any of the above ONLY if they contain a specific dollar amount or payment obligation.
+
+A typical SOW/WO should produce 8-20 baseline items. Focus on quality over quantity.
+
+For each item, provide:
 - clauseRef: The section/clause reference number (e.g., "3.1", "Schedule A, Item 2")
-- type: One of PRICING, TIMELINE, SCOPE, QUALITY, REGULATORY, PAYMENT_TERMS, IP, OTHER
-- title: Short descriptive title (e.g., "API manufacturing price per kg")
+- type: One of PRICING, TIMELINE, SCOPE, PAYMENT_TERMS
+- title: Short descriptive title (e.g., "API manufacturing price per batch")
 - description: Full text or summary of the clause
-- value: Numeric value if applicable (e.g., price amounts, durations). Use null if not numeric.
-- unit: Unit for the value (e.g., "USD", "days", "kg", "USD/kg"). Use null if no value.
+- value: Numeric value — REQUIRED for PRICING, TIMELINE, and PAYMENT_TERMS. Extract the primary dollar amount, duration, or numeric term. Use null ONLY if the clause is purely descriptive with no numbers at all.
+- unit: Unit for the value (e.g., "USD", "USD/batch", "USD/kg", "days", "weeks", "kg"). REQUIRED whenever value is set.
 ${PROVENANCE_INSTRUCTION}
+
+CRITICAL — Value Extraction Rules:
+- For PRICING clauses: ALWAYS extract the numeric price. E.g., "$285,000 per batch" → value: 285000, unit: "USD/batch"
+- For TIMELINE clauses: ALWAYS extract numeric durations. E.g., "12 weeks lead time" → value: 12, unit: "weeks"
+- For PAYMENT_TERMS clauses: ALWAYS extract numeric terms. E.g., "Net 45 days" → value: 45, unit: "days". For milestone payments, e.g., "50% upfront" → value: 50, unit: "%"
+- For tiered/volume pricing, extract each tier as a SEPARATE clause with its own value
+- If a value is a range, use the midpoint
+- Do NOT leave value as null if any numeric figure appears in the clause text
+- Extract EVERY pricing line, payment term, and timeline clause as separate items — do NOT combine multiple items into one clause
 
 Return a JSON object with this exact structure:
 {
@@ -220,21 +247,43 @@ Return a JSON object with this exact structure:
   "parties": ["Party A name", "Party B name"],
   "clauses": [
     {
-      "clauseRef": "1.1",
+      "clauseRef": "3.1",
       "type": "PRICING",
-      "title": "...",
-      "description": "...",
-      "value": 50000,
-      "unit": "USD",
+      "title": "Manufacturing batch cost",
+      "description": "The cost for API manufacturing is $285,000 per batch",
+      "value": 285000,
+      "unit": "USD/batch",
       "excerpt": "verbatim quote from document...",
       "page": 3,
       "confidence": 0.95
+    },
+    {
+      "clauseRef": "3.2",
+      "type": "PRICING",
+      "title": "Quality control testing cost",
+      "description": "QC testing is charged at $45,000 per batch",
+      "value": 45000,
+      "unit": "USD/batch",
+      "excerpt": "verbatim quote from document...",
+      "page": 3,
+      "confidence": 0.92
+    },
+    {
+      "clauseRef": "7.1",
+      "type": "PAYMENT_TERMS",
+      "title": "Payment terms",
+      "description": "Payment due within 45 days of invoice date",
+      "value": 45,
+      "unit": "days",
+      "excerpt": "verbatim quote from document...",
+      "page": 7,
+      "confidence": 0.90
     }
   ],
   "summary": "Brief 1-2 sentence summary of the document"
 }
 
-Extract ALL identifiable terms. Be thorough. If a value appears as a range, use the midpoint. Return ONLY valid JSON, no markdown fences.`;
+Focus on terms that would appear as line items on an invoice or that define payment obligations. Quality over quantity. Return ONLY valid JSON, no markdown fences.`;
 
 const INVOICE_PROMPT = `You are an expert invoice analyst for biopharma outsourcing. Extract the invoice header and all line items from this document.
 ${PROVENANCE_INSTRUCTION}
@@ -413,6 +462,7 @@ function getPromptForTarget(targetType: ExtractionTargetType): string {
     case "CHANGE_TRANSCRIPT": return CHANGE_TRANSCRIPT_PROMPT;
     case "CHANGE_EMAIL": return CHANGE_EMAIL_PROMPT;
     case "TERMS": return TERMS_PROMPT;
+    case "SCOPE_ANALYSIS": return CHANGE_TRANSCRIPT_PROMPT;
   }
 }
 
@@ -489,7 +539,10 @@ async function parseWithRetry(
     const validated = schema.parse(parsed) as Record<string, unknown>;
     return { data: validated, totalInputTokens: totalInput, totalOutputTokens: totalOutput, retried: false };
   } catch (firstError) {
-    // Retry once with error feedback
+    // Re-throw API-level errors — SDK already retried these
+    if (firstError instanceof Anthropic.APIError) throw firstError;
+
+    // Retry once with error feedback (JSON/Zod validation errors only)
     const errMsg = firstError instanceof z.ZodError
       ? `Validation errors: ${firstError.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")}`
       : firstError instanceof Error ? firstError.message : "Invalid JSON";
@@ -677,6 +730,13 @@ function estimateConfidence(data: Record<string, unknown>, targetType: Extractio
       if (Array.isArray(terms) && terms.length > 0) score += 0.2;
       if (data.documentTitle) score += 0.1;
       if (data.parties && Array.isArray(data.parties) && (data.parties as unknown[]).length > 0) score += 0.1;
+      if (data.summary) score += 0.1;
+      break;
+    }
+    case "SCOPE_ANALYSIS": {
+      const candidates = data.candidates as unknown[];
+      if (Array.isArray(candidates) && candidates.length > 0) score += 0.2;
+      if (data.meetingTitle) score += 0.1;
       if (data.summary) score += 0.1;
       break;
     }
