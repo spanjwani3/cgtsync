@@ -175,11 +175,25 @@ export async function POST(req: NextRequest) {
   }
 
   const recipients = collectRecipients(payload);
-  const program = recipients.length
-    ? await prisma.program.findFirst({
-        where: { inboundEmailAddress: { in: recipients } },
+
+  // Resolve to a program via either path:
+  //   1. IngestAddress table (canonical, multi-address per program, used by /scope UI)
+  //   2. Program.inboundEmailAddress (legacy single-field, set during onboarding)
+  // IngestAddress is checked first because it carries the scope-analysis pipeline.
+  const ingestAddress = recipients.length
+    ? await prisma.ingestAddress.findFirst({
+        where: { address: { in: recipients }, isActive: true },
+        include: { program: true },
       })
     : null;
+
+  const program =
+    ingestAddress?.program ??
+    (recipients.length
+      ? await prisma.program.findFirst({
+          where: { inboundEmailAddress: { in: recipients } },
+        })
+      : null);
 
   if (!program) {
     await prisma.eventLog.create({
@@ -198,6 +212,52 @@ export async function POST(req: NextRequest) {
       },
     });
     return NextResponse.json({ requestId, ok: true, dropped: "no_matching_program" });
+  }
+
+  // If we matched via an IngestAddress row, route through the scope-analysis
+  // pipeline so the email surfaces as ScopeAlerts on /scope. The fallback path
+  // (Program.inboundEmailAddress) keeps the original extraction +
+  // reconcileCandidateChanges flow for backward compat.
+  if (ingestAddress) {
+    const fromEmail = payload.FromFull?.Email ?? payload.From ?? "";
+    const fromName = payload.FromFull?.Name ?? payload.FromName ?? null;
+
+    const inboundEmail = await prisma.inboundEmail.create({
+      data: {
+        ingestAddressId: ingestAddress.id,
+        programId: program.id,
+        fromEmail,
+        fromName,
+        subject: payload.Subject ?? null,
+        textBody:
+          payload.StrippedTextReply ||
+          payload.TextBody ||
+          stripHtml(payload.HtmlBody) ||
+          null,
+        status: "RECEIVED",
+      },
+    });
+
+    const { processInboundEmail } = await import("@/lib/server/inbound-email");
+    try {
+      const result = await processInboundEmail(inboundEmail.id);
+      return NextResponse.json({
+        requestId,
+        ok: true,
+        ingestAddress: ingestAddress.address,
+        ...result,
+      });
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : "unknown error";
+      await prisma.inboundEmail.update({
+        where: { id: inboundEmail.id },
+        data: { status: "FAILED", errorMessage: errMsg, processedAt: new Date() },
+      });
+      return NextResponse.json(
+        { requestId, ok: false, inboundEmailId: inboundEmail.id, error: errMsg },
+        { status: 500 },
+      );
+    }
   }
 
   const auth = parseAuthResults(payload.Headers);

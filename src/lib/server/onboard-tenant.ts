@@ -142,6 +142,28 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
     );
   }
 
+  // Create a default IngestAddress for the program so /scope shows a working
+  // forwarding address immediately (no need for the customer to visit /scope
+  // to bootstrap one). Uses the first successfully-provisioned admin as
+  // createdById; skipped silently if no admin was created.
+  const firstAdminId = adminResults.find((a) => a.userId)?.userId;
+  if (firstAdminId) {
+    const shortId = program.id.replace(/-/g, "").slice(0, 8);
+    const domain = process.env.INGEST_EMAIL_DOMAIN ?? "inbox.cgtsync.ai";
+    const ingestAddr = `prg-${shortId}@${domain}`;
+    await prisma.ingestAddress.upsert({
+      where: { address: ingestAddr },
+      update: { isActive: true },
+      create: {
+        programId: program.id,
+        orgId: org.id,
+        address: ingestAddr,
+        label: "Default ingest address",
+        createdById: firstAdminId,
+      },
+    });
+  }
+
   return {
     org: { id: org.id, name: org.name, slug: org.slug },
     program: { id: program.id, name: program.name },
