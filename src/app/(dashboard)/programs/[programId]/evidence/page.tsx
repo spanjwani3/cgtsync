@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import BulkUploadModal from "@/components/evidence/BulkUploadModal";
+import EmailViewerModal from "@/components/evidence/EmailViewerModal";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 const EVIDENCE_TYPES = [
@@ -96,6 +97,7 @@ export default function EvidencePage() {
   const [error, setError] = useState("");
   const [selectedJob, setSelectedJob] = useState<ExtractionJob | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [emailViewerEvidenceId, setEmailViewerEvidenceId] = useState<string | null>(null);
 
   // Apply modal state
   const [applyJob, setApplyJob] = useState<ExtractionJob | null>(null);
@@ -209,6 +211,18 @@ export default function EvidencePage() {
   }
 
   async function viewFile(evidenceId: string) {
+    // Try the email-view endpoint first — for evidence created from inbound
+    // emails, render a formatted email modal instead of opening the raw .txt.
+    // 404 means the evidence has no linked inbound email; fall through to
+    // the signed-URL path for direct file viewing.
+    const emailRes = await fetch(
+      `/api/gateway/evidence/${evidenceId}/email-view`,
+    );
+    if (emailRes.ok) {
+      setEmailViewerEvidenceId(evidenceId);
+      return;
+    }
+
     const res = await fetch(`/api/gateway/evidence/${evidenceId}`);
     if (res.ok) {
       const data = await res.json();
@@ -644,6 +658,13 @@ export default function EvidencePage() {
           programId={programId}
           onClose={() => setShowBulkUpload(false)}
           onComplete={() => { setShowBulkUpload(false); loadEvidence(); }}
+        />
+      )}
+
+      {emailViewerEvidenceId && (
+        <EmailViewerModal
+          evidenceId={emailViewerEvidenceId}
+          onClose={() => setEmailViewerEvidenceId(null)}
         />
       )}
     </div>

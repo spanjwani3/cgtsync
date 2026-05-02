@@ -38,11 +38,15 @@ export async function POST(req: NextRequest) {
       singleUse,
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-    return NextResponse.json({
-      ...link,
-      url: `${appUrl}/confirm/${link.token}`,
-    }, { status: 201 });
+    // Build URL on the org's tenant subdomain (not the apex which serves
+    // the marketing site).
+    const { buildTenantUrlForOrg } = await import("@/lib/server/tenant");
+    const url = await buildTenantUrlForOrg(
+      program.orgId,
+      `/confirm/${link.token}`,
+    );
+
+    return NextResponse.json({ ...link, url }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

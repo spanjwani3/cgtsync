@@ -3,6 +3,7 @@ import { MagicLinkScope, EventAction, EmailEntityType } from "@/generated/prisma
 import { logEvent } from "./event-log";
 import { sendEmail, logEmailSend, checkRateLimit } from "./email";
 import { renderConfirmationEmail } from "./email-templates";
+import { buildTenantUrlForOrg } from "./tenant";
 
 interface CreateMagicLinkParams {
   scope: MagicLinkScope;
@@ -153,9 +154,13 @@ export async function createConfirmationEmail(params: CreateConfirmationEmailPar
     singleUse: true,
   });
 
-  // 2. Build CTA URL
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  const ctaUrl = `${siteUrl}/confirm/${magicLink.token}`;
+  // 2. Build CTA URL on the org's tenant subdomain.
+  // NEXT_PUBLIC_SITE_URL points at the apex which serves the marketing site
+  // (Lovable), not the app. The confirm page lives only on tenant subdomains.
+  const ctaUrl = await buildTenantUrlForOrg(
+    params.orgId,
+    `/confirm/${magicLink.token}`,
+  );
 
   // 3. Determine email type
   const type = params.scope === MagicLinkScope.BASELINE_CONFIRM ? "BASELINE" : "CHANGE";
