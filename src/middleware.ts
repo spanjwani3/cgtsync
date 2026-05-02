@@ -2,18 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import {
   MULTI_TENANT_MODE,
+  ROOT_DOMAIN,
   TENANT_ORG_HEADER,
   TENANT_SLUG_HEADER,
+  isAdminHost,
   isValidTenantSlug,
   parseHost,
 } from "@/lib/server/tenant";
 
 export async function middleware(request: NextRequest) {
+  const url = request.nextUrl;
+  const rawHost = request.headers.get("host");
+  const host = (rawHost ?? "").split(":")[0].toLowerCase();
+  const isLocal = host === "localhost" || host.endsWith(".localhost");
+  const isAdmin = isAdminHost(rawHost);
+  const isAdminPath =
+    url.pathname.startsWith("/admin") || url.pathname.startsWith("/api/admin");
+
+  // Platform admin lives on a single canonical host (admin.<ROOT_DOMAIN>).
+  // Tenant subdomains never serve /admin/* or /api/admin/* — redirect those
+  // paths so admin cookies/sessions stay scoped to the admin subdomain.
+  // Localhost is exempt so dev still works without DNS gymnastics.
+  if (isAdminPath && !isAdmin && !isLocal) {
+    const target = new URL(
+      `https://admin.${ROOT_DOMAIN}${url.pathname}${url.search}`,
+    );
+    return NextResponse.redirect(target);
+  }
+
+  // On the admin host, skip tenant resolution — admin pages don't need
+  // an org context. requirePlatformAdmin() gates the actual admin routes.
+  if (isAdmin) {
+    return await updateSession(request);
+  }
+
   if (!MULTI_TENANT_MODE) {
     return await updateSession(request);
   }
 
-  const { subdomain, isRoot } = parseHost(request.headers.get("host"));
+  const { subdomain, isRoot } = parseHost(rawHost);
 
   if (isRoot || subdomain === null) {
     return await updateSession(request);
