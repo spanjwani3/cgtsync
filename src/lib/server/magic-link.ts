@@ -3,7 +3,7 @@ import { MagicLinkScope, EventAction, EmailEntityType } from "@/generated/prisma
 import { logEvent } from "./event-log";
 import { sendEmail, logEmailSend, checkRateLimit } from "./email";
 import { renderConfirmationEmail } from "./email-templates";
-import { buildTenantUrlForOrg } from "./tenant";
+import { buildTenantUrlForOrg } from "./tenant-url";
 
 interface CreateMagicLinkParams {
   scope: MagicLinkScope;

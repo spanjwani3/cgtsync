@@ -71,8 +71,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Build CTA URL on the org's tenant subdomain (not the apex,
-    // which serves the marketing site).
-    const { buildTenantUrlForOrg } = await import("@/lib/server/tenant");
+    // which serves the marketing site). Imported from tenant-url.ts
+    // (not tenant.ts) so the helper's Prisma dep doesn't get traced
+    // into the Edge Runtime middleware bundle.
+    const { buildTenantUrlForOrg } = await import("@/lib/server/tenant-url");
     const ctaUrl = await buildTenantUrlForOrg(
       auth.orgId,
       `/confirm/${magicLink.token}`,
