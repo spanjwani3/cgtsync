@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformAdmin } from "@/lib/server/auth";
+import AdminNav from "../AdminNav";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,9 @@ export default async function TenantsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <AdminNav active="tenants" />
+
+      <div className="mt-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900">Tenants</h1>
           <p className="mt-1 text-sm text-muted">
