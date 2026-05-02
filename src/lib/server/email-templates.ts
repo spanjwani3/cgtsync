@@ -338,3 +338,44 @@ export function renderIngestConfirmationEmail(params: IngestConfirmationEmailPar
       : "Sent via CGT-Sync. This is an automated confirmation.",
   );
 }
+
+// ── Welcome Email (tenant onboarding) ───────────────────────
+
+export interface WelcomeEmailParams {
+  recipientEmail: string;
+  orgName: string;
+  programName: string;
+  loginUrl: string;
+  magicLink: string;
+  tempPassword: string;
+}
+
+export function renderWelcomeEmail(params: WelcomeEmailParams): string {
+  const body = `
+<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Welcome to CGT-Sync</h2>
+<p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
+  An admin account has been created for you on <strong>${params.orgName}</strong>'s CGT-Sync workspace
+  for the program <strong>${params.programName}</strong>. CGT-Sync is the change-control and
+  reconciliation platform for your CDMO program.
+</p>
+<p style="margin:24px 0 8px;">
+  ${ctaButton("Sign in with one click", params.magicLink)}
+</p>
+<p style="margin:0 0 24px;font-size:12px;color:${MUTED};">This one-click link expires in 48 hours.</p>
+
+<div style="margin:0 0 24px;padding:16px;background-color:#f8fafc;border:1px solid ${BORDER};border-radius:8px;">
+  <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:${MUTED};font-weight:600;">If the one-click link expires</p>
+  <p style="margin:0 0 4px;font-size:13px;color:${NAVY};">Sign in at <a href="${params.loginUrl}" style="color:${ACCENT};text-decoration:none;">${params.loginUrl}</a></p>
+  <p style="margin:0 0 4px;font-size:13px;color:${NAVY};">Email: <span style="font-family:monospace;">${params.recipientEmail}</span></p>
+  <p style="margin:0;font-size:13px;color:${NAVY};">Temporary password: <span style="font-family:monospace;font-weight:600;">${params.tempPassword}</span></p>
+  <p style="margin:8px 0 0;font-size:12px;color:${MUTED};">Please change this password from Settings after signing in.</p>
+</div>
+
+<p style="margin:0;font-size:12px;color:${MUTED};">If you did not expect this email, please contact your organization's administrator.</p>`;
+
+  return baseLayout(
+    `Welcome to CGT-Sync — ${params.orgName}`,
+    body,
+    `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated message.`,
+  );
+}

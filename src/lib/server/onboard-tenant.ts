@@ -4,16 +4,21 @@
  * (`scripts/onboard-tenant.ts`).
  *
  * Creates Organization + Program + admin Supabase Auth users + OrgMember rows
- * + a temp password + magic link per admin. Idempotent — re-running with the
- * same slug updates existing rows, resets passwords, and reissues magic
- * links. The platform admin delivers either credential to each user;
- * password is the primary path, magic link is the backup.
+ * + a temp password + magic link per admin, then sends each admin a welcome
+ * email via Resend with login URL, magic link, and temp password. Idempotent —
+ * re-running with the same slug updates existing rows, resets passwords, and
+ * reissues magic links + welcome emails. Email send is best-effort: if Resend
+ * rejects, tenant creation still succeeds and the credentials are returned in
+ * the response for hand-delivery as a fallback.
  */
 
 import { randomBytes } from "crypto";
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { isValidTenantSlug } from "@/lib/server/tenant";
+import { sendEmail, logEmailSend } from "@/lib/server/email";
+import { renderWelcomeEmail } from "@/lib/server/email-templates";
+import { EmailTemplateType } from "@/generated/prisma/client";
 
 export interface OnboardArgs {
   slug: string;
@@ -31,6 +36,11 @@ export interface OnboardedAdmin {
   password: string | null;
   passwordReset: boolean;
   magicLink: string | null;
+  welcomeEmail: {
+    sent: boolean;
+    resendId: string | null;
+    error: string | null;
+  };
   error: string | null;
 }
 
@@ -135,11 +145,18 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
         },
       });
 
+  const provisionCtx = {
+    orgId: org.id,
+    orgSlug: org.slug,
+    orgName: org.name,
+    programId: program.id,
+    programName: program.name,
+    tenantHost,
+    loginUrl: `${tenantHost}/login`,
+  };
   const adminResults: OnboardedAdmin[] = [];
   for (const email of admins) {
-    adminResults.push(
-      await provisionAdmin(supabase, org.id, email, tenantHost),
-    );
+    adminResults.push(await provisionAdmin(supabase, provisionCtx, email));
   }
 
   // Create a default IngestAddress for the program so /scope shows a working
@@ -173,11 +190,20 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
   };
 }
 
+interface ProvisionContext {
+  orgId: string;
+  orgSlug: string;
+  orgName: string;
+  programId: string;
+  programName: string;
+  tenantHost: string;
+  loginUrl: string;
+}
+
 async function provisionAdmin(
   supabase: SupabaseClient,
-  orgId: string,
+  ctx: ProvisionContext,
   email: string,
-  tenantHost: string,
 ): Promise<OnboardedAdmin> {
   const password = generatePassword();
   let userId: string | null = null;
@@ -224,6 +250,7 @@ async function provisionAdmin(
       password: null,
       passwordReset: false,
       magicLink: null,
+      welcomeEmail: { sent: false, resendId: null, error: "skipped: user creation failed" },
       error,
     };
   }
@@ -235,21 +262,33 @@ async function provisionAdmin(
   });
 
   await prisma.orgMember.upsert({
-    where: { orgId_userId: { orgId, userId } },
+    where: { orgId_userId: { orgId: ctx.orgId, userId } },
     update: { role: "ADMIN" },
-    create: { orgId, userId, role: "ADMIN" },
+    create: { orgId: ctx.orgId, userId, role: "ADMIN" },
   });
 
   const link = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email,
-    options: { redirectTo: `${tenantHost}/callback` },
+    options: { redirectTo: `${ctx.tenantHost}/callback` },
   });
 
   const properties = link.data?.properties as
     | { action_link?: string }
     | undefined;
   const action_link = properties?.action_link ?? null;
+  const linkError = link.error?.message ?? null;
+  const combinedError = error ?? linkError;
+
+  const welcomeEmail = await sendWelcomeEmail({
+    ctx,
+    userId,
+    email,
+    password,
+    magicLink: action_link,
+    passwordReset,
+    skipReason: combinedError ?? (action_link ? null : "no magic link"),
+  });
 
   return {
     email,
@@ -257,6 +296,77 @@ async function provisionAdmin(
     password,
     passwordReset,
     magicLink: action_link,
-    error: link.error?.message ?? error,
+    welcomeEmail,
+    error: combinedError,
   };
+}
+
+interface SendWelcomeArgs {
+  ctx: ProvisionContext;
+  userId: string;
+  email: string;
+  password: string;
+  magicLink: string | null;
+  passwordReset: boolean;
+  skipReason: string | null;
+}
+
+async function sendWelcomeEmail(
+  args: SendWelcomeArgs,
+): Promise<{ sent: boolean; resendId: string | null; error: string | null }> {
+  if (args.skipReason || !args.magicLink) {
+    return {
+      sent: false,
+      resendId: null,
+      error: args.skipReason ?? "no magic link",
+    };
+  }
+
+  const subject = `Welcome to CGT-Sync — your ${args.ctx.orgName} admin account`;
+  try {
+    const html = renderWelcomeEmail({
+      recipientEmail: args.email,
+      orgName: args.ctx.orgName,
+      programName: args.ctx.programName,
+      loginUrl: args.ctx.loginUrl,
+      magicLink: args.magicLink,
+      tempPassword: args.password,
+    });
+    const sendResult = await sendEmail({ to: args.email, subject, html });
+
+    try {
+      await logEmailSend({
+        orgId: args.ctx.orgId,
+        programId: args.ctx.programId,
+        senderUserId: args.userId,
+        recipientEmail: args.email,
+        subject,
+        templateType: EmailTemplateType.WELCOME,
+        resendId: sendResult.id,
+        metadata: {
+          tenantSlug: args.ctx.orgSlug,
+          passwordReset: args.passwordReset,
+        },
+      });
+    } catch (logErr) {
+      console.warn(
+        "logEmailSend failed during welcome email; email itself was sent:",
+        logErr,
+      );
+    }
+
+    return sendResult.id
+      ? { sent: true, resendId: sendResult.id, error: null }
+      : {
+          sent: false,
+          resendId: null,
+          error: sendResult.error ?? "Resend returned no id",
+        };
+  } catch (e) {
+    return {
+      sent: false,
+      resendId: null,
+      error: e instanceof Error ? e.message : "Welcome email failed",
+    };
+  }
 }

@@ -84,10 +84,15 @@ async function main() {
   console.log(`Program:          ${result.program.name} (${result.program.id})`);
   console.log("");
   for (const a of result.admins) {
+    const welcome = a.welcomeEmail.sent
+      ? `sent (resend id ${a.welcomeEmail.resendId})`
+      : `NOT SENT — ${a.welcomeEmail.error ?? "unknown"}`;
     console.log(`Admin: ${a.email}`);
-    console.log(`  user id:    ${a.userId ?? "(failed)"}`);
-    console.log(`  magic link: ${a.magicLink ?? "(failed to mint)"}`);
-    if (a.error) console.log(`  error:      ${a.error}`);
+    console.log(`  user id:        ${a.userId ?? "(failed)"}`);
+    console.log(`  welcome email:  ${welcome}`);
+    console.log(`  magic link:     ${a.magicLink ?? "(failed to mint)"}`);
+    console.log(`  temp password:  ${a.password ?? "(none)"}`);
+    if (a.error) console.log(`  error:          ${a.error}`);
     console.log("");
   }
   console.log("Done.");
