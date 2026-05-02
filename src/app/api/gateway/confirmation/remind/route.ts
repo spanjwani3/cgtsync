@@ -70,8 +70,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-    const ctaUrl = `${siteUrl}/confirm/${magicLink.token}`;
+    // Build CTA URL on the org's tenant subdomain (not the apex,
+    // which serves the marketing site).
+    const { buildTenantUrlForOrg } = await import("@/lib/server/tenant");
+    const ctaUrl = await buildTenantUrlForOrg(
+      auth.orgId,
+      `/confirm/${magicLink.token}`,
+    );
 
     const org = await prisma.organization.findFirst({
       where: { id: auth.orgId },

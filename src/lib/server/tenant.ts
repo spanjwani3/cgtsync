@@ -89,3 +89,34 @@ export async function getTenantContext(): Promise<TenantContext | null> {
   if (!orgId || !slug) return null;
   return { orgId, slug };
 }
+
+// ─── Tenant URL helpers ──────────────────────────────────────
+
+/**
+ * Build a URL on a tenant subdomain (e.g. https://cellipont.cgtsync.ai/foo).
+ * Use this for customer-facing links — confirmation emails, magic links,
+ * etc. NEXT_PUBLIC_SITE_URL points at the apex which serves the marketing
+ * site (Lovable), not the app.
+ */
+export function buildTenantUrl(orgSlug: string, path: string): string {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `https://${orgSlug}.${ROOT_DOMAIN}${cleanPath}`;
+}
+
+/**
+ * Look up an org by id and build a tenant-subdomain URL for it.
+ * Throws ORG_NOT_FOUND if the org doesn't exist.
+ */
+export async function buildTenantUrlForOrg(
+  orgId: string,
+  path: string,
+): Promise<string> {
+  // Lazy import to avoid pulling Prisma into modules that don't need it
+  const { prisma } = await import("@/lib/prisma");
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { slug: true },
+  });
+  if (!org) throw new Error("ORG_NOT_FOUND");
+  return buildTenantUrl(org.slug, path);
+}
