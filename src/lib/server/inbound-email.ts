@@ -1,13 +1,15 @@
 /**
  * Inbound email processing service — handles emails received via
- * SendGrid Inbound Parse webhook, classifies content, stores evidence,
- * and routes to the appropriate extraction pipeline.
+ * Postmark Inbound webhook, classifies content, stores evidence,
+ * routes to the appropriate extraction pipeline, and (for transcripts)
+ * runs scope-analysis inline so /scope populates without manual upload.
  */
 
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/server/event-log";
 import { classifyInboundContent, mapToExtractionTarget } from "@/lib/server/ingest-classifier";
 import type { InboundContentType } from "@/lib/server/ingest-classifier";
+import { analyzeScopeFromText } from "@/lib/server/scope-analysis";
 
 // ─── Ingest address generation ───────────────────────────────
 
@@ -163,6 +165,54 @@ export async function processInboundEmail(
       entityId: inboundEmailId,
       metadata: { detectedType, evidenceId: evidence.id, extractionJobId: extractionJobId ?? null },
     });
+
+    // For transcripts, run scope-analysis inline. The ExtractionJob created
+    // above is the "extract candidate changes" path; analyzeScopeFromText
+    // is the path that populates /scope with ScopeAnalysis + ScopeAlerts.
+    // Without this call, transcripts arrive but /scope stays empty.
+    if (detectedType === "TRANSCRIPT" && bodyContent.trim().length > 0) {
+      try {
+        const result = await analyzeScopeFromText(
+          programId,
+          bodyContent,
+          "EMAIL_INGEST",
+          evidence.id,
+        );
+        await logEvent({
+          programId,
+          action: "SCOPE_ANALYSIS_COMPLETED",
+          entityType: "ScopeAnalysis",
+          entityId: result.analysisId,
+          metadata: {
+            inboundEmailId,
+            evidenceId: evidence.id,
+            alertCount: result.alertCount,
+            source: "EMAIL_INGEST",
+          },
+        });
+      } catch (analysisError) {
+        const msg =
+          analysisError instanceof Error
+            ? analysisError.message
+            : "scope analysis failed";
+        // NO_LOCKED_BASELINE is the expected failure when the program has no
+        // locked baseline yet. Don't fail the inbound webhook for this — the
+        // transcript is still saved as Evidence and can be re-analyzed later.
+        await logEvent({
+          programId,
+          action: "INGEST_EMAIL_FAILED",
+          entityType: "InboundEmail",
+          entityId: inboundEmailId,
+          metadata: {
+            stage: "scope_analysis",
+            error: msg,
+            inboundEmailId,
+            evidenceId: evidence.id,
+            recoverable: msg === "NO_LOCKED_BASELINE",
+          },
+        });
+      }
+    }
 
     return {
       inboundEmailId,
