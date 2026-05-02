@@ -76,6 +76,19 @@ export function parseHost(rawHost: string | null | undefined): ParsedHost {
   return { host, subdomain: null, isRoot: false };
 }
 
+/**
+ * True if the request host is the dedicated platform admin subdomain
+ * (admin.<ROOT_DOMAIN>). Edge-safe — pure string compare, no DB/Node APIs.
+ *
+ * Tenant subdomains never serve /admin/*; the middleware redirects those
+ * paths to admin.<ROOT_DOMAIN> so platform admin lives on a single host
+ * with its own cookie scope.
+ */
+export function isAdminHost(rawHost: string | null | undefined): boolean {
+  const host = (rawHost ?? "").split(":")[0].toLowerCase();
+  return host === `admin.${ROOT_DOMAIN}`;
+}
+
 export interface TenantContext {
   orgId: string;
   slug: string;
