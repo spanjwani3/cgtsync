@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { isValidTenantSlug } from "@/lib/server/tenant";
 import { sendEmail, logEmailSend } from "@/lib/server/email";
 import { renderWelcomeEmail } from "@/lib/server/email-templates";
+import { addProjectDomain } from "@/lib/server/vercel";
 import { EmailTemplateType } from "@/generated/prisma/client";
 
 export interface OnboardArgs {
@@ -50,6 +51,7 @@ export interface OnboardResult {
   tenantHost: string;
   loginUrl: string;
   admins: OnboardedAdmin[];
+  vercelDomain: { added: boolean; error: string | null };
 }
 
 export class OnboardError extends Error {
@@ -159,6 +161,11 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
     adminResults.push(await provisionAdmin(supabase, provisionCtx, email));
   }
 
+  // Register the tenant subdomain with Vercel so TLS provisions automatically.
+  // Best-effort: if Vercel is unreachable or token is missing, tenant creation
+  // continues and the platform admin can add the domain manually in Vercel UI.
+  const vercelDomain = await addProjectDomain(`${slug}.${rootDomain}`);
+
   // Create a default IngestAddress for the program so /scope shows a working
   // forwarding address immediately (no need for the customer to visit /scope
   // to bootstrap one). Uses the first successfully-provisioned admin as
@@ -187,6 +194,7 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
     tenantHost,
     loginUrl: `${tenantHost}/login`,
     admins: adminResults,
+    vercelDomain,
   };
 }
 

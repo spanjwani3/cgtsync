@@ -23,6 +23,7 @@ interface OnboardResult {
   tenantHost: string;
   loginUrl: string;
   admins: OnboardedAdmin[];
+  vercelDomain: { added: boolean; error: string | null };
 }
 
 export default function NewTenantForm({ rootDomain }: { rootDomain: string }) {
@@ -224,6 +225,18 @@ function ResultView({ result }: { result: OnboardResult }) {
               {result.tenantHost}
             </a>
           </p>
+          {result.vercelDomain.added && (
+            <p className="mt-1 text-xs text-green-700">
+              Subdomain registered with Vercel — TLS provisions automatically
+              within ~30s.
+            </p>
+          )}
+          {result.vercelDomain.error && (
+            <p className="mt-1 text-xs text-amber-700">
+              Vercel: {result.vercelDomain.error}. Add the domain manually at
+              Vercel → project → domains.
+            </p>
+          )}
         </div>
         <Link href="/admin/tenants" className="btn-secondary">
           Back to tenants

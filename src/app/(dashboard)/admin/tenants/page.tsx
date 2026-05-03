@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformAdmin } from "@/lib/server/auth";
 import AdminNav from "../AdminNav";
+import TenantRow from "./TenantRow";
 
 export const dynamic = "force-dynamic";
 
@@ -50,50 +51,19 @@ export default async function TenantsPage() {
         </p>
       ) : (
         <div className="mt-6 grid gap-3">
-          {orgs.map((org) => {
-            const isSubdomainTenant = !org.slug.startsWith("org-");
-            const tenantUrl = `https://${org.slug}.${rootDomain}`;
-            return (
-              <div key={org.id} className="card">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-zinc-900">{org.name}</h3>
-                    <p className="mt-0.5 text-xs text-muted">
-                      <span className="font-mono">{org.slug}</span>
-                      {isSubdomainTenant && (
-                        <>
-                          {" · "}
-                          <a
-                            href={tenantUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-accent-text underline"
-                          >
-                            {org.slug}.{rootDomain}
-                          </a>
-                        </>
-                      )}
-                      {!isSubdomainTenant && (
-                        <span className="text-zinc-400">
-                          {" · auto-generated org (no subdomain)"}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-muted">
-                    <p>
-                      {org._count.programs} program
-                      {org._count.programs === 1 ? "" : "s"}
-                    </p>
-                    <p>
-                      {org._count.members} member
-                      {org._count.members === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {orgs.map((org) => (
+            <TenantRow
+              key={org.id}
+              org={{
+                id: org.id,
+                name: org.name,
+                slug: org.slug,
+                programCount: org._count.programs,
+                memberCount: org._count.members,
+              }}
+              rootDomain={rootDomain}
+            />
+          ))}
         </div>
       )}
     </div>
