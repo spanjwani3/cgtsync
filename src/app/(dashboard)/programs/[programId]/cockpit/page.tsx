@@ -830,7 +830,7 @@ export default function CockpitPage() {
                         <TimelineItem
                           label="Confirmation link viewed"
                           time={emailDetail.viewedAt}
-                          color="bg-teal-500"
+                          color="bg-accent"
                         />
                       )}
                       {emailDetail.confirmedAt && (

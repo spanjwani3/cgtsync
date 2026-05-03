@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -31,17 +32,7 @@ export default function ForgotPasswordPage() {
     return (
       <div className="flex flex-col items-center">
         <div className="mb-2">
-          <svg
-            className="h-14 w-14 text-teal-400"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
+          <Logo size={56} variant="dark" />
         </div>
         <h1 className="text-2xl font-bold text-white">Check your inbox</h1>
         <p className="mt-4 text-center text-sm text-slate-400">
@@ -53,7 +44,7 @@ export default function ForgotPasswordPage() {
         </p>
         <Link
           href="/login"
-          className="mt-8 text-sm font-medium text-teal-400 hover:text-teal-300"
+          className="mt-8 text-sm font-medium text-accent hover:text-accent-hover"
         >
           Back to sign in
         </Link>
@@ -64,17 +55,7 @@ export default function ForgotPasswordPage() {
   return (
     <div className="flex flex-col items-center">
       <div className="mb-2">
-        <svg
-          className="h-14 w-14 text-teal-400"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </svg>
+        <Logo size={56} variant="dark" />
       </div>
       <h1 className="text-2xl font-bold text-white">Reset your password</h1>
       <p className="mt-2 text-center text-sm text-slate-400">
@@ -94,13 +75,13 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@company.com"
-              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-teal-500 text-sm font-semibold text-white transition-colors hover:bg-teal-400 disabled:opacity-50"
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {loading ? (
               <span className="flex items-center gap-2">
@@ -134,7 +115,7 @@ export default function ForgotPasswordPage() {
           Remembered it?{" "}
           <Link
             href="/login"
-            className="font-medium text-teal-400 hover:text-teal-300"
+            className="font-medium text-accent hover:text-accent-hover"
           >
             Back to sign in
           </Link>

@@ -4,16 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuditDrawer } from "./AuditDrawerContext";
+import { Logo } from "@/components/brand/Logo";
 
 /* ───── SVG icon components ───── */
-
-function ShieldIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
 
 function LayoutIcon({ className }: { className?: string }) {
   return (
@@ -208,9 +201,11 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
     <aside className="fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-sidebar-bg">
       {/* Logo */}
       <div className="flex h-14 items-center gap-2.5 px-5">
-        <ShieldIcon className="h-6 w-6 text-sidebar-active" />
-        <Link href="/dashboard" className="text-base font-bold tracking-tight text-sidebar-text-bright">
-          CGT-Sync
+        <Link href="/dashboard" className="inline-flex items-center gap-2.5">
+          <Logo size={26} variant="dark" />
+          <span className="text-base font-bold tracking-tight text-sidebar-text-bright">
+            CGT Sync
+          </span>
         </Link>
       </div>
 

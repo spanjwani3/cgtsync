@@ -19,8 +19,20 @@ function baseLayout(title: string, body: string, footer: string): string {
 <tr><td style="padding:24px 0;">
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
 <!-- Header bar -->
-<tr><td style="background-color:${NAVY};padding:24px 32px;">
-  <h1 style="margin:0;font-size:20px;font-weight:700;color:#ffffff;">CGT-Sync</h1>
+<tr><td style="background-color:${NAVY};padding:20px 32px;">
+  <table role="presentation" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="vertical-align:middle;padding-right:10px;">
+        <svg width="28" height="28" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+          <path d="M24 4 L42 10 V24 C42 34 33 42 24 44 C15 42 6 34 6 24 V10 Z" fill="${NAVY}" stroke="${ACCENT}" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M16 24 L22 30 L33 18" stroke="${ACCENT}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </td>
+      <td style="vertical-align:middle;">
+        <h1 style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.01em;">CGT Sync</h1>
+      </td>
+    </tr>
+  </table>
 </td></tr>
 <!-- Body -->
 <tr><td style="padding:32px;">
@@ -88,11 +100,11 @@ ${messageHtml}
 <p style="margin:0;font-size:12px;color:${MUTED};">This link expires in 48 hours. Click to review the details and approve or decline.</p>`;
 
   return baseLayout(
-    `${typeLabel} Confirmation — CGT-Sync`,
+    `${typeLabel} Confirmation — CGT Sync`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated message.`
-      : "Sent via CGT-Sync. This is an automated message."
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated message.`
+      : "Sent via CGT Sync. This is an automated message."
   );
 }
 
@@ -149,8 +161,8 @@ export function renderPaymentReminderEmail(params: PaymentReminderEmailParams): 
     `Payment Reminder — Invoice ${params.invoiceNumber}`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated reminder.`
-      : "Sent via CGT-Sync. This is an automated reminder."
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated reminder.`
+      : "Sent via CGT Sync. This is an automated reminder."
   );
 }
 
@@ -203,8 +215,8 @@ ${messageHtml}
     `Dispute Packet — Invoice ${params.invoiceNumber}`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. Confidential.`
-      : "Sent via CGT-Sync. Confidential."
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. Confidential.`
+      : "Sent via CGT Sync. Confidential."
   );
 }
 
@@ -236,11 +248,11 @@ export function renderFollowUpEmail(params: FollowUpEmailParams): string {
 <p style="margin:0;font-size:12px;color:${MUTED};">If you have already responded, please disregard this reminder.</p>`;
 
   return baseLayout(
-    `Reminder: ${typeLabel} Confirmation — CGT-Sync`,
+    `Reminder: ${typeLabel} Confirmation — CGT Sync`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated follow-up.`
-      : "Sent via CGT-Sync. This is an automated follow-up."
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated follow-up.`
+      : "Sent via CGT Sync. This is an automated follow-up."
   );
 }
 
@@ -303,8 +315,8 @@ ${moreText}
     `${params.alertCount} Scope Flag${params.alertCount !== 1 ? "s" : ""} — ${params.programName}`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated notification.`
-      : "Sent via CGT-Sync. This is an automated notification.",
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated notification.`
+      : "Sent via CGT Sync. This is an automated notification.",
   );
 }
 
@@ -334,8 +346,8 @@ export function renderIngestConfirmationEmail(params: IngestConfirmationEmailPar
     `Email Received — ${params.programName}`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated confirmation.`
-      : "Sent via CGT-Sync. This is an automated confirmation.",
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated confirmation.`
+      : "Sent via CGT Sync. This is an automated confirmation.",
   );
 }
 
@@ -352,10 +364,10 @@ export interface WelcomeEmailParams {
 
 export function renderWelcomeEmail(params: WelcomeEmailParams): string {
   const body = `
-<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Welcome to CGT-Sync</h2>
+<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Welcome to CGT Sync</h2>
 <p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
-  An admin account has been created for you on <strong>${params.orgName}</strong>'s CGT-Sync workspace
-  for the program <strong>${params.programName}</strong>. CGT-Sync is the change-control and
+  An admin account has been created for you on <strong>${params.orgName}</strong>'s CGT Sync workspace
+  for the program <strong>${params.programName}</strong>. CGT Sync is the change-control and
   reconciliation platform for your CDMO program.
 </p>
 <p style="margin:24px 0 8px;">
@@ -374,9 +386,9 @@ export function renderWelcomeEmail(params: WelcomeEmailParams): string {
 <p style="margin:0;font-size:12px;color:${MUTED};">If you did not expect this email, please contact your organization's administrator.</p>`;
 
   return baseLayout(
-    `Welcome to CGT-Sync — ${params.orgName}`,
+    `Welcome to CGT Sync — ${params.orgName}`,
     body,
-    `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated message.`,
+    `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated message.`,
   );
 }
 
@@ -391,7 +403,7 @@ export interface PasswordResetEmailParams {
 
 export function renderPasswordResetEmail(params: PasswordResetEmailParams): string {
   const body = `
-<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Reset your CGT-Sync password</h2>
+<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Reset your CGT Sync password</h2>
 <p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
   We received a request to reset the password for <strong>${params.recipientEmail}</strong>.
   Click the button below to choose a new password. The link expires in 1 hour and can only be used once.
@@ -411,10 +423,10 @@ export function renderPasswordResetEmail(params: PasswordResetEmailParams): stri
 <p style="margin:0;font-size:12px;color:${MUTED};">For security questions, contact your organization's administrator.</p>`;
 
   return baseLayout(
-    `Reset your CGT-Sync password`,
+    `Reset your CGT Sync password`,
     body,
     params.orgName
-      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated message.`
-      : `Sent via CGT-Sync. This is an automated message.`,
+      ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated message.`
+      : `Sent via CGT Sync. This is an automated message.`,
   );
 }

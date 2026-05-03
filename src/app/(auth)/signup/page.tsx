@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -37,56 +38,72 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="space-y-4 text-center">
-        <h1 className="text-2xl font-bold text-zinc-900">Check your email</h1>
-        <p className="text-sm text-zinc-500">We sent a confirmation link to <strong>{email}</strong></p>
-        <Link href="/login" className="text-sm font-medium text-zinc-900 hover:underline">Back to Sign In</Link>
+      <div className="flex flex-col items-center text-center">
+        <Logo size={56} variant="dark" />
+        <h1 className="mt-3 text-2xl font-bold text-white">Check your email</h1>
+        <p className="mt-2 text-sm text-slate-300">
+          We sent a confirmation link to <strong className="text-white">{email}</strong>
+        </p>
+        <Link href="/login" className="mt-6 text-sm font-medium text-accent hover:text-accent-hover">
+          Back to Sign In
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-zinc-900">Create Account</h1>
-        <p className="mt-1 text-sm text-zinc-500">Join CGT-Sync</p>
+    <div className="flex flex-col items-center">
+      <div className="mb-2">
+        <Logo size={56} variant="dark" />
       </div>
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      )}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">Full Name</label>
-          <input
-            type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">Email</label>
-          <input
-            type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">Password</label>
-          <input
-            type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8}
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-          />
-        </div>
-        <button
-          type="submit" disabled={loading}
-          className="flex h-11 w-full items-center justify-center rounded-md bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-        >
-          {loading ? "Creating..." : "Create Account"}
-        </button>
-      </form>
-      <p className="text-center text-sm text-zinc-500">
-        Already have an account?{" "}
-        <Link href="/login" className="font-medium text-zinc-900 hover:underline">Sign in</Link>
-      </p>
+      <h1 className="text-2xl font-bold text-white">CGT Sync</h1>
+      <p className="mt-2 text-center text-sm text-slate-400">Join CGT Sync</p>
+
+      <div className="mt-8 w-full">
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{error}</div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300">Full Name</label>
+            <input
+              type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300">Email</label>
+            <input
+              type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+              placeholder="you@company.com"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300">Password</label>
+            <input
+              type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8}
+              placeholder="At least 8 characters"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <button
+            type="submit" disabled={loading}
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          >
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Creating...
+              </span>
+            ) : "Create Account"}
+          </button>
+        </form>
+        <p className="mt-6 text-center text-sm text-slate-500">
+          Already have an account?{" "}
+          <Link href="/login" className="font-medium text-accent hover:text-accent-hover">Sign in</Link>
+        </p>
+      </div>
     </div>
   );
 }

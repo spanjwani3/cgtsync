@@ -115,7 +115,7 @@ export async function generatePdf(
       bufferPages: true,
       info: {
         Title: options.title,
-        Author: "CGT-Sync",
+        Author: "CGT Sync",
       },
     });
 
@@ -142,7 +142,7 @@ export async function generatePdf(
     }
 
     doc.fontSize(16).fillColor(C.white).text(options.title, titleX, 18, { width: USABLE_W - (titleX - MARGIN) });
-    const headerInfo = options.orgName ? `${options.orgName} | Confidential` : "CGT-Sync | Confidential";
+    const headerInfo = options.orgName ? `${options.orgName} | Confidential` : "CGT Sync | Confidential";
     doc.fontSize(8).fillColor("#aabbcc").text(headerInfo, MARGIN, 42, { width: USABLE_W / 2 });
     doc.fontSize(8).fillColor("#aabbcc").text(
       `Generated: ${new Date().toISOString().split("T")[0]}`,
@@ -230,7 +230,7 @@ export async function generatePdf(
             // skip logo on error
           }
         }
-        const orgLabel = options.orgName ?? "CGT-Sync";
+        const orgLabel = options.orgName ?? "CGT Sync";
         doc.fontSize(8).fillColor(C.muted).text(orgLabel, headerLeftX, 18, { width: USABLE_W / 3 });
         doc.fontSize(8).fillColor(C.muted).text(options.title, MARGIN + USABLE_W / 3, 18, { width: USABLE_W / 3, align: "center" });
         doc.fontSize(8).fillColor(C.muted).text("Confidential", MARGIN + (2 * USABLE_W) / 3, 18, { width: USABLE_W / 3, align: "right" });
@@ -251,7 +251,7 @@ export async function generatePdf(
         { width: USABLE_W / 3, align: "center" }
       );
       doc.fontSize(7).fillColor(C.muted).text(
-        "CGT-Sync",
+        "CGT Sync",
         MARGIN + (2 * USABLE_W) / 3,
         FOOTER_Y,
         { width: USABLE_W / 3, align: "right" }

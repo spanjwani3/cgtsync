@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CGT-Sync",
+  title: "CGT Sync",
   description: "Financial & Scope Governance for Biopharma",
 };
 

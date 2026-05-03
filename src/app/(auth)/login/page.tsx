@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -66,23 +67,13 @@ export default function LoginPage() {
   if (processingMagicLink) {
     return (
       <div className="flex flex-col items-center">
-        <div className="mb-2">
-          <svg
-            className="h-14 w-14 text-teal-400"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
+        <div className="mb-2 brand-pulse">
+          <Logo size={56} variant="dark" />
         </div>
-        <h1 className="text-2xl font-bold text-white">CGT-Sync</h1>
+        <h1 className="text-2xl font-bold text-white">CGT Sync</h1>
         <p className="mt-6 text-sm text-slate-300">Signing you in…</p>
         <svg
-          className="mt-3 h-5 w-5 animate-spin text-teal-400"
+          className="mt-3 h-5 w-5 animate-spin text-accent"
           viewBox="0 0 24 24"
           fill="none"
         >
@@ -108,11 +99,9 @@ export default function LoginPage() {
     <div className="flex flex-col items-center">
       {/* Shield logo */}
       <div className="mb-2">
-        <svg className="h-14 w-14 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </svg>
+        <Logo size={56} variant="dark" />
       </div>
-      <h1 className="text-2xl font-bold text-white">CGT-Sync</h1>
+      <h1 className="text-2xl font-bold text-white">CGT Sync</h1>
       <p className="mt-2 text-center text-sm text-slate-400">
         The governed truth layer for<br />cell &amp; gene therapy programs.
       </p>
@@ -127,7 +116,7 @@ export default function LoginPage() {
             <input
               type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
               placeholder="you@company.com"
-              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <div>
@@ -135,12 +124,12 @@ export default function LoginPage() {
             <input
               type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
               placeholder="Enter your password"
-              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <button
             type="submit" disabled={loading}
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-teal-500 text-sm font-semibold text-white transition-colors hover:bg-teal-400 disabled:opacity-50"
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {loading ? (
               <span className="flex items-center gap-2">
@@ -151,13 +140,13 @@ export default function LoginPage() {
           </button>
         </form>
         <p className="mt-6 text-center text-sm text-slate-500">
-          <Link href="/forgot-password" className="font-medium text-teal-400 hover:text-teal-300">
+          <Link href="/forgot-password" className="font-medium text-accent hover:text-accent-hover">
             Forgot password?
           </Link>
         </p>
         <p className="mt-3 text-center text-sm text-slate-500">
           No account?{" "}
-          <Link href="/signup" className="font-medium text-teal-400 hover:text-teal-300">Sign up</Link>
+          <Link href="/signup" className="font-medium text-accent hover:text-accent-hover">Sign up</Link>
         </p>
       </div>
     </div>
