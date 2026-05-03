@@ -71,12 +71,34 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Cascade-delete via Postgres (Program → all program children, OrgMember,
-    // IngestAddress, EmailLog, etc. — all FKs onDelete: Cascade per schema).
+    // Cascade-delete via Postgres. Most relations are onDelete: Cascade. The
+    // exception is event_logs.program_id which is SET NULL — but a BEFORE
+    // UPDATE/DELETE trigger on event_logs enforces append-only semantics for
+    // app code, so the SET NULL is rejected during cascade.
+    //
+    // Workaround: wrap in a transaction, set the trigger-bypass session var
+    // so this transaction can mutate event_logs, then explicitly delete the
+    // event_logs for this org's programs (cleaner than orphaning them with
+    // NULL program_id), then delete the org and let the rest cascade.
+    //
     // Supabase auth.users entries are intentionally retained because they may
     // hold memberships in other orgs; can be pruned via maintenance script later.
     // TODO: emit TENANT_DELETED event once enum migration ships.
-    await prisma.organization.delete({ where: { slug } });
+    const programs = await prisma.program.findMany({
+      where: { orgId: org.id },
+      select: { id: true },
+    });
+    const programIds = programs.map((p) => p.id);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL app.bypass_event_log_lock = 'on'`);
+      if (programIds.length > 0) {
+        await tx.eventLog.deleteMany({
+          where: { programId: { in: programIds } },
+        });
+      }
+      await tx.organization.delete({ where: { slug } });
+    });
 
     // Best-effort: detach Vercel domain so dead subdomains don't accumulate.
     const rootDomain = process.env.ROOT_DOMAIN ?? "cgtsync.ai";
