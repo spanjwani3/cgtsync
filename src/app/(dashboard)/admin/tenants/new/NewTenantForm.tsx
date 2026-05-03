@@ -9,6 +9,11 @@ interface OnboardedAdmin {
   password: string | null;
   passwordReset: boolean;
   magicLink: string | null;
+  welcomeEmail: {
+    sent: boolean;
+    resendId: string | null;
+    error: string | null;
+  };
   error: string | null;
 }
 
@@ -84,8 +89,8 @@ export default function NewTenantForm({ rootDomain }: { rootDomain: string }) {
         <div>
           <h1 className="text-2xl font-bold text-zinc-900">New tenant</h1>
           <p className="mt-1 text-sm text-muted">
-            Creates an organization, program, Supabase Auth users, and one-time
-            magic links you can hand-email.
+            Creates an organization, program, and Supabase Auth users, then
+            emails each admin their login URL, magic link, and temp password.
           </p>
         </div>
         <Link href="/admin/tenants" className="btn-secondary">
@@ -250,14 +255,13 @@ function ResultView({ result }: { result: OnboardResult }) {
       </div>
 
       <div className="mt-8">
-        <h2 className="font-semibold text-zinc-900">Admin credentials</h2>
+        <h2 className="font-semibold text-zinc-900">Admin invitations</h2>
         <p className="mt-1 text-xs text-muted">
-          For each admin, copy <span className="font-medium">Login URL</span>,{" "}
-          <span className="font-medium">Email</span>, and{" "}
-          <span className="font-medium">Temporary password</span> into an email.
-          Magic link is a one-time backup if the password fails. These
-          credentials are shown <span className="font-medium">only once</span>
-          {" "}— save the email draft before navigating away.
+          A welcome email with login URL, magic link, and temp password was
+          sent to each admin. If a send failed, the credentials below are still
+          valid — copy them into a manual email as a fallback. Re-running this
+          form resets passwords and resends invites. Credentials are shown{" "}
+          <span className="font-medium">only once</span>.
         </p>
         <div className="mt-3 space-y-3">
           {result.admins.map((a) => (
@@ -310,17 +314,34 @@ function AdminRow({
 
   return (
     <div className="card">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
         <p className="font-semibold text-zinc-900">{admin.email}</p>
-        {admin.passwordReset && (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-            existing user — password reset
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {admin.passwordReset && (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+              existing user — password reset
+            </span>
+          )}
+          {admin.welcomeEmail.sent && (
+            <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              welcome email sent
+            </span>
+          )}
+          {!admin.welcomeEmail.sent && admin.userId && (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+              email send failed — copy credentials below
+            </span>
+          )}
+        </div>
       </div>
 
       {admin.error && (
         <p className="mt-2 text-xs text-red-600">{admin.error}</p>
+      )}
+      {admin.welcomeEmail.error && !admin.error && (
+        <p className="mt-2 text-xs text-amber-700">
+          Email delivery: {admin.welcomeEmail.error}
+        </p>
       )}
 
       <div className="mt-3 space-y-2 text-sm">
