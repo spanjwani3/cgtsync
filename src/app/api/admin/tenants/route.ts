@@ -111,8 +111,19 @@ function errorResponse(requestId: string, e: unknown, route: string) {
     return NextResponse.json({ requestId, error: message }, { status: 400 });
   }
   console.error(structuredError({ requestId, route, error: e }));
+  // This endpoint is platform-admin-gated, so it's safe (and useful) to
+  // surface the underlying error to the caller. Prisma errors carry both a
+  // `code` (e.g. P2003 for FK violation) and a `meta` object — include both
+  // so the admin can diagnose without digging through Vercel function logs.
+  const errObj = e as { code?: string; meta?: Record<string, unknown> };
   return NextResponse.json(
-    { requestId, error: "Internal server error" },
+    {
+      requestId,
+      error: "Internal server error",
+      details: message,
+      prismaCode: errObj.code ?? null,
+      prismaMeta: errObj.meta ?? null,
+    },
     { status: 500 },
   );
 }
