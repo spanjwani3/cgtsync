@@ -379,3 +379,42 @@ export function renderWelcomeEmail(params: WelcomeEmailParams): string {
     `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated message.`,
   );
 }
+
+// ── Password Reset Email (self-service recovery) ────────────
+
+export interface PasswordResetEmailParams {
+  recipientEmail: string;
+  resetLink: string;
+  loginUrl: string;
+  orgName?: string;
+}
+
+export function renderPasswordResetEmail(params: PasswordResetEmailParams): string {
+  const body = `
+<h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Reset your CGT-Sync password</h2>
+<p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
+  We received a request to reset the password for <strong>${params.recipientEmail}</strong>.
+  Click the button below to choose a new password. The link expires in 1 hour and can only be used once.
+</p>
+<p style="margin:24px 0 8px;">
+  ${ctaButton("Reset password", params.resetLink)}
+</p>
+<p style="margin:0 0 24px;font-size:12px;color:${MUTED};">
+  If the button does not work, paste this URL into your browser:<br />
+  <span style="font-family:monospace;word-break:break-all;color:${NAVY};">${params.resetLink}</span>
+</p>
+<div style="margin:0 0 16px;padding:12px 16px;background-color:#f8fafc;border-left:3px solid ${ACCENT};border-radius:0 8px 8px 0;">
+  <p style="margin:0;font-size:13px;color:${NAVY};">
+    Didn't request this? You can safely ignore this email — your password won't change unless you click the link above and choose a new one. You can sign in normally at <a href="${params.loginUrl}" style="color:${ACCENT};text-decoration:none;">${params.loginUrl}</a>.
+  </p>
+</div>
+<p style="margin:0;font-size:12px;color:${MUTED};">For security questions, contact your organization's administrator.</p>`;
+
+  return baseLayout(
+    `Reset your CGT-Sync password`,
+    body,
+    params.orgName
+      ? `Sent via CGT-Sync on behalf of ${params.orgName}. This is an automated message.`
+      : `Sent via CGT-Sync. This is an automated message.`,
+  );
+}
