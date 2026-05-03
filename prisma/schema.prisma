@@ -268,6 +268,7 @@ model User {
   id        String   @id @db.Uuid
   email     String   @unique
   fullName  String?  @map("full_name")
+  onboardingState Json @default("{}") @map("onboarding_state")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

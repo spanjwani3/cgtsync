@@ -449,7 +449,7 @@ export default function BaselinePage() {
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                     Add Item
                   </button>
-                  <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary disabled:opacity-50">
+                  <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} data-tour="sow-upload" className="btn-primary disabled:opacity-50">
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
                     Parse SOW
                   </button>
@@ -508,7 +508,7 @@ export default function BaselinePage() {
                     <svg className="h-10 w-10 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                     <p className="mt-3 font-medium text-zinc-900">No truth items yet</p>
                     <p className="mt-1 text-sm text-muted">Upload a SOW/WO to auto-parse, or add items manually</p>
-                    <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} className="btn-primary mt-4 disabled:opacity-50">Parse SOW</button>
+                    <button onClick={() => fileRef.current?.click()} disabled={extraction.status !== "idle"} data-tour="sow-upload" className="btn-primary mt-4 disabled:opacity-50">Parse SOW</button>
                   </div>
                 )}
               </div>

@@ -111,7 +111,7 @@ export default function ProgramsPage() {
           <h1 className="text-2xl font-bold text-zinc-900">Programs</h1>
           <p className="mt-1 text-sm text-muted">Manage your Sponsor-CDMO programs</p>
         </div>
-        <Link href="/onboarding" className="btn-primary">
+        <Link href="/onboarding" data-tour="new-program-btn" className="btn-primary">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           New Program
         </Link>
@@ -165,7 +165,7 @@ export default function ProgramsPage() {
             {myOnly || filterPm ? "Try changing your filter" : "Create your first program to get started"}
           </p>
           {!myOnly && !filterPm && (
-            <Link href="/onboarding" className="btn-primary mt-5">Create Program</Link>
+            <Link href="/onboarding" data-tour="new-program-btn" className="btn-primary mt-5">Create Program</Link>
           )}
         </div>
       ) : (

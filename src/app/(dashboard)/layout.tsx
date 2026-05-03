@@ -8,6 +8,9 @@ import { ProgramProvider } from "@/components/layout/ProgramContext";
 import { AuditDrawerProvider } from "@/components/layout/AuditDrawerContext";
 import SidebarWithContext from "@/components/layout/SidebarWithContext";
 import AuditDrawer from "@/components/layout/AuditDrawer";
+import OnboardingProvider, {
+  type OnboardingState,
+} from "@/components/onboarding/OnboardingProvider";
 import { isValidHex, shade } from "@/lib/brand/shade";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -15,8 +18,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Ensure user record exists
-  await prisma.user.upsert({
+  // Ensure user record exists; capture onboardingState in the same round-trip
+  // so the onboarding provider can decide whether to fire a tour stage.
+  const userRow = await prisma.user.upsert({
     where: { id: user.id },
     update: { email: user.email ?? "" },
     create: {
@@ -24,7 +28,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
       email: user.email ?? "",
       fullName: user.user_metadata?.full_name ?? null,
     },
+    select: { onboardingState: true },
   });
+  const onboardingState =
+    (userRow.onboardingState && typeof userRow.onboardingState === "object"
+      ? (userRow.onboardingState as OnboardingState)
+      : {}) as OnboardingState;
 
   // Resolve the org context. In multi-tenant mode on a tenant subdomain,
   // the middleware sets x-tenant-org-id headers; we render the layout for
@@ -101,16 +110,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="tenant-branding min-h-screen bg-background" style={tenantStyle}>
       <ProgramProvider>
         <AuditDrawerProvider>
-          <SidebarWithContext
-            orgName={membership.org.name}
-            userEmail={user.email ?? ""}
-            userName={user.user_metadata?.full_name ?? undefined}
-            isOrgAdmin={isOrgAdmin}
-            logoUrl={logoSignedUrl}
-            accentColor={accentColor}
-          />
-          <main className="ml-60 min-h-screen p-6 lg:p-8">{children}</main>
-          <AuditDrawer />
+          <OnboardingProvider initialState={onboardingState}>
+            <SidebarWithContext
+              orgName={membership.org.name}
+              userEmail={user.email ?? ""}
+              userName={user.user_metadata?.full_name ?? undefined}
+              isOrgAdmin={isOrgAdmin}
+              logoUrl={logoSignedUrl}
+              accentColor={accentColor}
+            />
+            <main className="ml-60 min-h-screen p-6 lg:p-8">{children}</main>
+            <AuditDrawer />
+          </OnboardingProvider>
         </AuditDrawerProvider>
       </ProgramProvider>
     </div>
