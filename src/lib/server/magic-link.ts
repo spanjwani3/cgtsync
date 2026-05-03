@@ -4,6 +4,7 @@ import { logEvent } from "./event-log";
 import { sendEmail, logEmailSend, checkRateLimit } from "./email";
 import { renderConfirmationEmail } from "./email-templates";
 import { buildTenantUrlForOrg } from "./tenant-url";
+import { getOrgBranding } from "./org-branding";
 
 interface CreateMagicLinkParams {
   scope: MagicLinkScope;
@@ -170,6 +171,7 @@ export async function createConfirmationEmail(params: CreateConfirmationEmailPar
 
   // 4. Render email
   const subject = `${type === "BASELINE" ? "Baseline" : "Change Order"} Confirmation: ${params.entityTitle}`;
+  const branding = await getOrgBranding(params.orgId);
   const html = renderConfirmationEmail({
     type,
     title: params.entityTitle,
@@ -178,6 +180,7 @@ export async function createConfirmationEmail(params: CreateConfirmationEmailPar
     pmName: params.pmName,
     orgName: params.orgName,
     message: params.message,
+    accentColor: branding.accentColor,
   });
 
   // 5. Send via Resend

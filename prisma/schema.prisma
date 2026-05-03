@@ -291,6 +291,7 @@ model Organization {
   members            OrgMember[]
   programs           Program[]
   logoUrl            String?          @map("logo_url")
+  accentColor        String?          @map("accent_color")
   importMappings     ImportMapping[]
   emailLogs          EmailLog[]
   emailConfig        OrgEmailConfig?

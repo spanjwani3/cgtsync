@@ -6,6 +6,7 @@ import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generateRequestId, structuredError } from "@/lib/config";
 import { sendEmail, logEmailSend, checkRateLimit } from "@/lib/server/email";
 import { renderDisputeDeliveryEmail } from "@/lib/server/email-templates";
+import { getOrgBranding } from "@/lib/server/org-branding";
 import { getSignedUrl } from "@/lib/server/storage";
 
 export async function POST(req: NextRequest) {
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
     const currency = invoice?.currency ?? program?.currency ?? "USD";
 
     const subject = `Dispute Pack — Invoice ${invoiceNumber} — ${program?.name ?? "Program"}`;
+    const branding = await getOrgBranding(auth.orgId);
     const html = renderDisputeDeliveryEmail({
       programName: program?.name ?? "Program",
       invoiceNumber,
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
       pmName: sender?.fullName ?? undefined,
       message,
       orgName: org?.name ?? undefined,
+      accentColor: branding.accentColor,
     });
 
     const result = await sendEmail({ to: recipientEmail, subject, html });

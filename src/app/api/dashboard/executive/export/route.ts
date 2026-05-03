@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
 import { requireTenantOrgAccess } from "@/lib/server/auth";
 import { generatePdf } from "@/lib/server/pdf";
+import { getOrgBranding } from "@/lib/server/org-branding";
 
 export async function POST() {
   try {
@@ -67,10 +68,12 @@ export async function POST() {
 
     const delinquentAccounts = [...delinquentMap.values()].sort((a, b) => b.overdueAmount - a.overdueAmount);
 
+    const branding = await getOrgBranding(auth.orgId);
     const { buffer } = await generatePdf({
       title: "Executive Dashboard Report",
       subtitle: `${org?.name ?? "Organization"} — ${now.toISOString().split("T")[0]}`,
       orgName: org?.name ?? undefined,
+      accentColor: branding.accentColor,
       sections: [
         {
           title: "Executive Summary",

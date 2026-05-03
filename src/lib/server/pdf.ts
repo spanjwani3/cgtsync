@@ -45,6 +45,8 @@ interface PdfOptions {
   footer?: string;
   orgName?: string;
   logoBuffer?: Buffer;
+  /** Tenant accent color (e.g. "#2563eb"). Defaults to CGT Sync blue. */
+  accentColor?: string;
 }
 
 // ─── drawTable ───────────────────────────────────────────────
@@ -128,8 +130,14 @@ export async function generatePdf(
     });
     doc.on("error", reject);
 
+    const accent = options.accentColor && /^#[0-9a-fA-F]{6}$/.test(options.accentColor)
+      ? options.accentColor
+      : "#2563eb";
+
     // ──── Branded Header Bar (page 1) ────
     doc.rect(0, 0, PAGE_W, 60).fill(C.navy);
+    // Accent stripe under the header — tenant brand cue
+    doc.rect(0, 60, PAGE_W, 3).fill(accent);
 
     let titleX = MARGIN;
     if (options.logoBuffer) {

@@ -5,6 +5,7 @@ import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generatePdf } from "@/lib/server/pdf";
 import { generateDisputePdf } from "@/lib/server/dispute-pdf";
+import { getOrgBranding } from "@/lib/server/org-branding";
 import { uploadEvidence, getSignedUrl } from "@/lib/server/storage";
 import { v4 as uuidv4 } from "uuid";
 import { CHANGE_BASE_SELECT, CHANGE_INCLUDE_SELECT } from "@/lib/server/change-compat";
@@ -67,8 +68,9 @@ export async function POST(req: NextRequest) {
 
     const org = await prisma.organization.findUnique({
       where: { id: program.orgId },
-      select: { name: true, logoUrl: true },
+      select: { name: true, logoUrl: true, accentColor: true },
     });
+    const branding = await getOrgBranding(program.orgId);
 
     let logoBuffer: Buffer | undefined;
     if (org?.logoUrl) {
@@ -114,6 +116,7 @@ export async function POST(req: NextRequest) {
         generatedBy: auth.email,
         orgName: org?.name,
         logoBuffer,
+        accentColor: branding.accentColor,
         flaggedItems: invoice.lineItems.map((li) => ({
           description: li.description,
           amount: Number(li.amount),
@@ -138,6 +141,7 @@ export async function POST(req: NextRequest) {
         sections,
         orgName: org?.name,
         logoBuffer,
+        accentColor: branding.accentColor,
       });
       buffer = result.buffer;
       sha256Hash = result.sha256Hash;

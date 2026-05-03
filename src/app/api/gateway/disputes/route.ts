@@ -7,6 +7,7 @@ import { uploadEvidence, getSignedUrl } from "@/lib/server/storage";
 import { v4 as uuidv4 } from "uuid";
 import { CHANGE_INCLUDE_SELECT } from "@/lib/server/change-compat";
 import { generateDisputePdf } from "@/lib/server/dispute-pdf";
+import { getOrgBranding } from "@/lib/server/org-branding";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     });
     if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     const auth = await requireProgramAccess(invoice.programId, OrgRole.OPERATOR);
+    const branding = await getOrgBranding(auth.orgId);
 
     const { buffer, sha256Hash } = await generateDisputePdf({
       programName: invoice.program.name,
@@ -37,6 +39,7 @@ export async function POST(req: NextRequest) {
       currency: invoice.currency,
       totalAmount: invoice.totalAmount ? Number(invoice.totalAmount) : null,
       generatedBy: auth.email,
+      accentColor: branding.accentColor,
       flaggedItems: invoice.lineItems.map((li) => ({
         description: li.description,
         amount: Number(li.amount),

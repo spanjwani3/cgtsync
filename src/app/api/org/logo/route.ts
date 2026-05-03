@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
 import { requireTenantOrgAccess } from "@/lib/server/auth";
-import { uploadEvidence } from "@/lib/server/storage";
+import { uploadEvidence, getSignedUrl } from "@/lib/server/storage";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,7 +27,16 @@ export async function POST(req: NextRequest) {
       select: { logoUrl: true },
     });
 
-    return NextResponse.json({ logoUrl: org.logoUrl });
+    let logoSignedUrl: string | null = null;
+    if (org.logoUrl) {
+      try {
+        logoSignedUrl = await getSignedUrl(org.logoUrl, 3600);
+      } catch (err) {
+        console.warn("[POST /api/org/logo] failed to sign URL:", err);
+      }
+    }
+
+    return NextResponse.json({ logoUrl: org.logoUrl, logoSignedUrl });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {
