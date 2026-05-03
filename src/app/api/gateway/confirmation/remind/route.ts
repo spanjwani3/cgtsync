@@ -5,6 +5,7 @@ import { requireProgramAccess } from "@/lib/server/auth";
 import { generateRequestId, structuredError } from "@/lib/config";
 import { sendEmail, logEmailSend, checkRateLimit } from "@/lib/server/email";
 import { renderFollowUpEmail } from "@/lib/server/email-templates";
+import { getOrgBranding } from "@/lib/server/org-branding";
 
 export async function POST(req: NextRequest) {
   const requestId = generateRequestId();
@@ -90,12 +91,14 @@ export async function POST(req: NextRequest) {
       : magicLink.createdAt.toLocaleDateString();
 
     const subject = `Reminder: ${type === "BASELINE" ? "Baseline" : "Change"} Confirmation — ${entityTitle}`;
+    const branding = await getOrgBranding(auth.orgId);
     const html = renderFollowUpEmail({
       type,
       title: entityTitle,
       originalSentDate,
       ctaUrl,
       orgName: org?.name,
+      accentColor: branding.accentColor,
     });
 
     const result = await sendEmail({ to: recipientEmail, subject, html });

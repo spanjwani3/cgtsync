@@ -1,10 +1,12 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuditDrawer } from "./AuditDrawerContext";
 import { Logo } from "@/components/brand/Logo";
+import { shade } from "@/lib/brand/shade";
 
 /* ───── SVG icon components ───── */
 
@@ -176,10 +178,21 @@ interface SidebarProps {
   orgName: string;
   userEmail: string;
   userName?: string;
+  isOrgAdmin?: boolean;
+  logoUrl?: string | null;
+  accentColor?: string | null;
   currentProgram?: { id: string; name: string; molecule?: string | null } | null;
 }
 
-export default function Sidebar({ orgName, userEmail, userName, currentProgram }: SidebarProps) {
+export default function Sidebar({
+  orgName,
+  userEmail,
+  userName,
+  isOrgAdmin,
+  logoUrl,
+  accentColor,
+  currentProgram,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toggle: toggleAudit } = useAuditDrawer();
@@ -197,15 +210,37 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
     .map((w) => w[0]?.toUpperCase())
     .join("");
 
+  const tenantStyle: CSSProperties | undefined = accentColor
+    ? ({
+        ["--accent" as string]: accentColor,
+        ["--accent-hover" as string]: shade(accentColor, -12),
+        ["--sidebar-active" as string]: accentColor,
+        ["--sidebar-active-hover" as string]: shade(accentColor, -12),
+      } as CSSProperties)
+    : undefined;
+
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-sidebar-bg">
+    <aside
+      className="tenant-branding fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-sidebar-bg"
+      style={tenantStyle}
+    >
       {/* Logo */}
       <div className="flex h-14 items-center gap-2.5 px-5">
         <Link href="/dashboard" className="inline-flex items-center gap-2.5">
-          <Logo size={26} variant="dark" />
-          <span className="text-base font-bold tracking-tight text-sidebar-text-bright">
-            CGT Sync
-          </span>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={`${orgName} logo`}
+              className="h-7 w-auto max-w-[120px] object-contain"
+            />
+          ) : (
+            <>
+              <Logo size={26} variant="dark" accentColor={accentColor ?? undefined} />
+              <span className="text-base font-bold tracking-tight text-sidebar-text-bright">
+                CGT Sync
+              </span>
+            </>
+          )}
         </Link>
       </div>
 
@@ -338,6 +373,19 @@ export default function Sidebar({ orgName, userEmail, userName, currentProgram }
           <SettingsIcon className="h-3.5 w-3.5" />
           Settings
         </Link>
+        {isOrgAdmin && (
+          <Link
+            href="/settings/branding"
+            className={`mt-1 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium transition-colors ${
+              pathname.startsWith("/settings/branding")
+                ? "bg-sidebar-active text-white"
+                : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+            }`}
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Branding
+          </Link>
+        )}
         <button
           onClick={handleLogout}
           className="mt-1 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-bright"

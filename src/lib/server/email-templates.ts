@@ -1,12 +1,17 @@
 // ── Branded HTML email templates with inline CSS ──────────
 
+import { DEFAULT_ACCENT, isValidHex, shade } from "@/lib/brand/shade";
+
 const NAVY = "#1a2332";
-const ACCENT = "#2563eb";
-const ACCENT_HOVER = "#1d4ed8";
 const MUTED = "#64748b";
 const BORDER = "#e2e8f0";
 
-function baseLayout(title: string, body: string, footer: string): string {
+function resolveAccent(accentColor?: string): { accent: string; accentHover: string } {
+  const accent = accentColor && isValidHex(accentColor) ? accentColor : DEFAULT_ACCENT;
+  return { accent, accentHover: shade(accent, -12) };
+}
+
+function baseLayout(title: string, body: string, footer: string, accent: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,8 +29,8 @@ function baseLayout(title: string, body: string, footer: string): string {
     <tr>
       <td style="vertical-align:middle;padding-right:10px;">
         <svg width="28" height="28" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-          <path d="M24 4 L42 10 V24 C42 34 33 42 24 44 C15 42 6 34 6 24 V10 Z" fill="${NAVY}" stroke="${ACCENT}" stroke-width="1.5" stroke-linejoin="round"/>
-          <path d="M16 24 L22 30 L33 18" stroke="${ACCENT}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M24 4 L42 10 V24 C42 34 33 42 24 44 C15 42 6 34 6 24 V10 Z" fill="${NAVY}" stroke="${accent}" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M16 24 L22 30 L33 18" stroke="${accent}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         </svg>
       </td>
       <td style="vertical-align:middle;">
@@ -49,7 +54,7 @@ ${body}
 </html>`;
 }
 
-function ctaButton(label: string, url: string, color: string = ACCENT): string {
+function ctaButton(label: string, url: string, color: string): string {
   return `<a href="${url}" style="display:inline-block;padding:12px 24px;background-color:${color};color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;line-height:1;">${label}</a>`;
 }
 
@@ -63,10 +68,12 @@ export interface ConfirmationEmailParams {
   pmName?: string;
   orgName?: string;
   message?: string;
+  accentColor?: string;
 }
 
 export function renderConfirmationEmail(params: ConfirmationEmailParams): string {
   const typeLabel = params.type === "BASELINE" ? "Baseline" : "Change Order";
+  const { accent } = resolveAccent(params.accentColor);
 
   const itemsHtml = params.items?.length
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;border:1px solid ${BORDER};border-radius:8px;overflow:hidden;">
@@ -78,7 +85,7 @@ ${params.items.map((item, i) => `<tr style="background-color:${i % 2 === 0 ? "#f
     : "";
 
   const messageHtml = params.message
-    ? `<div style="margin:16px 0;padding:12px 16px;background-color:#f0f9ff;border-left:3px solid ${ACCENT};border-radius:0 8px 8px 0;">
+    ? `<div style="margin:16px 0;padding:12px 16px;background-color:#f0f9ff;border-left:3px solid ${accent};border-radius:0 8px 8px 0;">
   <p style="margin:0;font-size:13px;color:${NAVY};">${params.message}</p>
 </div>`
     : "";
@@ -95,7 +102,7 @@ ${params.items.map((item, i) => `<tr style="background-color:${i % 2 === 0 ? "#f
 ${itemsHtml}
 ${messageHtml}
 <p style="margin:24px 0 16px;">
-  ${ctaButton("Review & Confirm", params.ctaUrl)}
+  ${ctaButton("Review & Confirm", params.ctaUrl, accent)}
 </p>
 <p style="margin:0;font-size:12px;color:${MUTED};">This link expires in 48 hours. Click to review the details and approve or decline.</p>`;
 
@@ -104,7 +111,8 @@ ${messageHtml}
     body,
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated message.`
-      : "Sent via CGT Sync. This is an automated message."
+      : "Sent via CGT Sync. This is an automated message.",
+    accent,
   );
 }
 
@@ -120,11 +128,13 @@ export interface PaymentReminderEmailParams {
   reminderCount: number;
   programName: string;
   orgName?: string;
+  accentColor?: string;
 }
 
 export function renderPaymentReminderEmail(params: PaymentReminderEmailParams): string {
   const isOverdue = params.daysPastDue > 0;
-  const urgencyColor = params.tier >= 3 ? "#dc2626" : params.tier >= 2 ? "#d97706" : ACCENT;
+  const { accent } = resolveAccent(params.accentColor);
+  const urgencyColor = params.tier >= 3 ? "#dc2626" : params.tier >= 2 ? "#d97706" : accent;
   const urgencyLabel = params.tier >= 3
     ? "Urgent: Significantly Past Due"
     : params.tier >= 2
@@ -162,7 +172,8 @@ export function renderPaymentReminderEmail(params: PaymentReminderEmailParams): 
     body,
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated reminder.`
-      : "Sent via CGT Sync. This is an automated reminder."
+      : "Sent via CGT Sync. This is an automated reminder.",
+    accent,
   );
 }
 
@@ -177,11 +188,13 @@ export interface DisputeDeliveryEmailParams {
   pmName?: string;
   message?: string;
   orgName?: string;
+  accentColor?: string;
 }
 
 export function renderDisputeDeliveryEmail(params: DisputeDeliveryEmailParams): string {
+  const { accent } = resolveAccent(params.accentColor);
   const messageHtml = params.message
-    ? `<div style="margin:16px 0;padding:12px 16px;background-color:#f0f9ff;border-left:3px solid ${ACCENT};border-radius:0 8px 8px 0;">
+    ? `<div style="margin:16px 0;padding:12px 16px;background-color:#f0f9ff;border-left:3px solid ${accent};border-radius:0 8px 8px 0;">
   <p style="margin:0;font-size:13px;color:${NAVY};">${params.message}</p>
 </div>`
     : "";
@@ -207,7 +220,7 @@ export function renderDisputeDeliveryEmail(params: DisputeDeliveryEmailParams): 
 </table>
 ${messageHtml}
 <p style="margin:24px 0 16px;">
-  ${ctaButton("Download Dispute Pack (PDF)", params.downloadUrl)}
+  ${ctaButton("Download Dispute Pack (PDF)", params.downloadUrl, accent)}
 </p>
 <p style="margin:0;font-size:12px;color:${MUTED};">This download link expires in 24 hours. The document is confidential.</p>`;
 
@@ -216,7 +229,8 @@ ${messageHtml}
     body,
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. Confidential.`
-      : "Sent via CGT Sync. Confidential."
+      : "Sent via CGT Sync. Confidential.",
+    accent,
   );
 }
 
@@ -228,10 +242,12 @@ export interface FollowUpEmailParams {
   originalSentDate: string;
   ctaUrl: string;
   orgName?: string;
+  accentColor?: string;
 }
 
 export function renderFollowUpEmail(params: FollowUpEmailParams): string {
   const typeLabel = params.type === "BASELINE" ? "Baseline" : "Change Order";
+  const { accent, accentHover } = resolveAccent(params.accentColor);
 
   const body = `
 <h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Reminder: ${typeLabel} Awaiting Confirmation</h2>
@@ -243,7 +259,7 @@ export function renderFollowUpEmail(params: FollowUpEmailParams): string {
   <p style="margin:4px 0 0;font-size:16px;font-weight:600;color:${NAVY};">${params.title}</p>
 </div>
 <p style="margin:20px 0 16px;">
-  ${ctaButton("Review & Confirm", params.ctaUrl, ACCENT_HOVER)}
+  ${ctaButton("Review & Confirm", params.ctaUrl, accentHover)}
 </p>
 <p style="margin:0;font-size:12px;color:${MUTED};">If you have already responded, please disregard this reminder.</p>`;
 
@@ -252,7 +268,8 @@ export function renderFollowUpEmail(params: FollowUpEmailParams): string {
     body,
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated follow-up.`
-      : "Sent via CGT Sync. This is an automated follow-up."
+      : "Sent via CGT Sync. This is an automated follow-up.",
+    accent,
   );
 }
 
@@ -265,10 +282,12 @@ export interface ScopeAlertEmailParams {
   alerts: { title: string; confidence: string; recommendedAction: string }[];
   ctaUrl: string;
   orgName?: string;
+  accentColor?: string;
 }
 
 export function renderScopeAlertEmail(params: ScopeAlertEmailParams): string {
   const WARNING = "#d97706";
+  const { accent } = resolveAccent(params.accentColor);
 
   const alertRows = params.alerts
     .slice(0, 5)
@@ -276,7 +295,7 @@ export function renderScopeAlertEmail(params: ScopeAlertEmailParams): string {
       (a) =>
         `<tr>
   <td style="padding:8px 12px;font-size:13px;color:${NAVY};font-weight:500;">${a.title}</td>
-  <td style="padding:8px 12px;font-size:13px;color:${a.confidence === "HIGH" ? "#dc2626" : a.confidence === "MEDIUM" ? WARNING : ACCENT};font-weight:600;text-align:center;">${a.confidence}</td>
+  <td style="padding:8px 12px;font-size:13px;color:${a.confidence === "HIGH" ? "#dc2626" : a.confidence === "MEDIUM" ? WARNING : accent};font-weight:600;text-align:center;">${a.confidence}</td>
   <td style="padding:8px 12px;font-size:12px;color:${MUTED};text-align:right;">${a.recommendedAction.replace(/_/g, " ")}</td>
 </tr>`,
     )
@@ -307,7 +326,7 @@ export function renderScopeAlertEmail(params: ScopeAlertEmailParams): string {
 </table>
 ${moreText}
 <p style="margin:24px 0 16px;">
-  ${ctaButton("Review Scope Alerts", params.ctaUrl)}
+  ${ctaButton("Review Scope Alerts", params.ctaUrl, accent)}
 </p>
 <p style="margin:0;font-size:12px;color:${MUTED};">Review and resolve these alerts to keep your program's change management up to date.</p>`;
 
@@ -317,6 +336,7 @@ ${moreText}
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated notification.`
       : "Sent via CGT Sync. This is an automated notification.",
+    accent,
   );
 }
 
@@ -327,10 +347,12 @@ export interface IngestConfirmationEmailParams {
   detectedType: string;
   programName: string;
   orgName?: string;
+  accentColor?: string;
 }
 
 export function renderIngestConfirmationEmail(params: IngestConfirmationEmailParams): string {
   const typeLabel = params.detectedType === "UNKNOWN" ? "unclassified content" : params.detectedType.toLowerCase().replace(/_/g, " ");
+  const { accent } = resolveAccent(params.accentColor);
 
   const body = `
 <h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Email Received</h2>
@@ -348,6 +370,7 @@ export function renderIngestConfirmationEmail(params: IngestConfirmationEmailPar
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated confirmation.`
       : "Sent via CGT Sync. This is an automated confirmation.",
+    accent,
   );
 }
 
@@ -360,9 +383,11 @@ export interface WelcomeEmailParams {
   loginUrl: string;
   magicLink: string;
   tempPassword: string;
+  accentColor?: string;
 }
 
 export function renderWelcomeEmail(params: WelcomeEmailParams): string {
+  const { accent } = resolveAccent(params.accentColor);
   const body = `
 <h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Welcome to CGT Sync</h2>
 <p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
@@ -371,13 +396,13 @@ export function renderWelcomeEmail(params: WelcomeEmailParams): string {
   reconciliation platform for your CDMO program.
 </p>
 <p style="margin:24px 0 8px;">
-  ${ctaButton("Sign in with one click", params.magicLink)}
+  ${ctaButton("Sign in with one click", params.magicLink, accent)}
 </p>
 <p style="margin:0 0 24px;font-size:12px;color:${MUTED};">This one-click link expires in 48 hours.</p>
 
 <div style="margin:0 0 24px;padding:16px;background-color:#f8fafc;border:1px solid ${BORDER};border-radius:8px;">
   <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:${MUTED};font-weight:600;">If the one-click link expires</p>
-  <p style="margin:0 0 4px;font-size:13px;color:${NAVY};">Sign in at <a href="${params.loginUrl}" style="color:${ACCENT};text-decoration:none;">${params.loginUrl}</a></p>
+  <p style="margin:0 0 4px;font-size:13px;color:${NAVY};">Sign in at <a href="${params.loginUrl}" style="color:${accent};text-decoration:none;">${params.loginUrl}</a></p>
   <p style="margin:0 0 4px;font-size:13px;color:${NAVY};">Email: <span style="font-family:monospace;">${params.recipientEmail}</span></p>
   <p style="margin:0;font-size:13px;color:${NAVY};">Temporary password: <span style="font-family:monospace;font-weight:600;">${params.tempPassword}</span></p>
   <p style="margin:8px 0 0;font-size:12px;color:${MUTED};">Please change this password from Settings after signing in.</p>
@@ -389,6 +414,7 @@ export function renderWelcomeEmail(params: WelcomeEmailParams): string {
     `Welcome to CGT Sync — ${params.orgName}`,
     body,
     `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated message.`,
+    accent,
   );
 }
 
@@ -399,9 +425,11 @@ export interface PasswordResetEmailParams {
   resetLink: string;
   loginUrl: string;
   orgName?: string;
+  accentColor?: string;
 }
 
 export function renderPasswordResetEmail(params: PasswordResetEmailParams): string {
+  const { accent } = resolveAccent(params.accentColor);
   const body = `
 <h2 style="margin:0 0 8px;font-size:18px;color:${NAVY};">Reset your CGT Sync password</h2>
 <p style="margin:0 0 16px;font-size:14px;color:${MUTED};line-height:1.5;">
@@ -409,15 +437,15 @@ export function renderPasswordResetEmail(params: PasswordResetEmailParams): stri
   Click the button below to choose a new password. The link expires in 1 hour and can only be used once.
 </p>
 <p style="margin:24px 0 8px;">
-  ${ctaButton("Reset password", params.resetLink)}
+  ${ctaButton("Reset password", params.resetLink, accent)}
 </p>
 <p style="margin:0 0 24px;font-size:12px;color:${MUTED};">
   If the button does not work, paste this URL into your browser:<br />
   <span style="font-family:monospace;word-break:break-all;color:${NAVY};">${params.resetLink}</span>
 </p>
-<div style="margin:0 0 16px;padding:12px 16px;background-color:#f8fafc;border-left:3px solid ${ACCENT};border-radius:0 8px 8px 0;">
+<div style="margin:0 0 16px;padding:12px 16px;background-color:#f8fafc;border-left:3px solid ${accent};border-radius:0 8px 8px 0;">
   <p style="margin:0;font-size:13px;color:${NAVY};">
-    Didn't request this? You can safely ignore this email — your password won't change unless you click the link above and choose a new one. You can sign in normally at <a href="${params.loginUrl}" style="color:${ACCENT};text-decoration:none;">${params.loginUrl}</a>.
+    Didn't request this? You can safely ignore this email — your password won't change unless you click the link above and choose a new one. You can sign in normally at <a href="${params.loginUrl}" style="color:${accent};text-decoration:none;">${params.loginUrl}</a>.
   </p>
 </div>
 <p style="margin:0;font-size:12px;color:${MUTED};">For security questions, contact your organization's administrator.</p>`;
@@ -428,5 +456,6 @@ export function renderPasswordResetEmail(params: PasswordResetEmailParams): stri
     params.orgName
       ? `Sent via CGT Sync on behalf of ${params.orgName}. This is an automated message.`
       : `Sent via CGT Sync. This is an automated message.`,
+    accent,
   );
 }

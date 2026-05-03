@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { generatePdf } from "@/lib/server/pdf";
+import { getOrgBranding } from "@/lib/server/org-branding";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generateRequestId, structuredError } from "@/lib/config";
 
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
 
     const orgName = program.org.name;
     const currency = program.currency;
+    const branding = await getOrgBranding(auth.orgId);
 
     // Fetch event log entries for the entity
     const events = await prisma.eventLog.findMany({
@@ -122,6 +124,7 @@ export async function POST(req: NextRequest) {
         generatedBy: auth.email,
         sections,
         footer: "This certificate is a system-generated proof of record from CGT Sync.",
+        accentColor: branding.accentColor,
       });
 
       await logEvent({
@@ -190,6 +193,7 @@ export async function POST(req: NextRequest) {
       generatedBy: auth.email,
       sections: invSections,
       footer: "This certificate is a system-generated proof of record from CGT Sync.",
+      accentColor: branding.accentColor,
     });
 
     await logEvent({

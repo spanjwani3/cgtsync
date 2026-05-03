@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { sendEmail, logEmailSend } from "@/lib/server/email";
 import { renderPasswordResetEmail } from "@/lib/server/email-templates";
+import { getOrgBranding } from "@/lib/server/org-branding";
 import { EmailTemplateType } from "@/generated/prisma/client";
 import { generateRequestId } from "@/lib/config";
 
@@ -120,11 +121,13 @@ export async function POST(req: NextRequest) {
     }
 
     const subject = `Reset your CGT Sync password`;
+    const branding = await getOrgBranding(member.orgId);
     const html = renderPasswordResetEmail({
       recipientEmail: email,
       resetLink: actionLink,
       loginUrl,
       orgName: member.org.name,
+      accentColor: branding.accentColor,
     });
 
     const sendResult = await sendEmail({ to: email, subject, html });

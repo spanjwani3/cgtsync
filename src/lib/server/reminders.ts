@@ -3,6 +3,7 @@ import { EventAction, EmailEntityType } from "@/generated/prisma/client";
 import { sendEmail, logEmailSend } from "./email";
 import { renderPaymentReminderEmail } from "./email-templates";
 import { logEvent } from "./event-log";
+import { getOrgBranding } from "./org-branding";
 
 // ── Escalation tiers ────────────────────────────────────────
 
@@ -77,6 +78,7 @@ export async function processReminderBatch(): Promise<BatchResult> {
       const newReminderCount = schedule.reminderCount + 1;
 
       // Render email
+      const branding = await getOrgBranding(schedule.orgId);
       const html = renderPaymentReminderEmail({
         invoiceNumber: invoice.invoiceNumber ?? `INV-${invoice.id.slice(0, 8)}`,
         amount: Number(invoice.totalAmount).toLocaleString(),
@@ -87,6 +89,7 @@ export async function processReminderBatch(): Promise<BatchResult> {
         reminderCount: newReminderCount,
         programName: schedule.program.name,
         orgName: schedule.org.name,
+        accentColor: branding.accentColor,
       });
 
       const subject = tier >= 3

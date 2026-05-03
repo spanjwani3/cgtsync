@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { isValidTenantSlug } from "@/lib/server/tenant";
 import { sendEmail, logEmailSend } from "@/lib/server/email";
 import { renderWelcomeEmail } from "@/lib/server/email-templates";
+import { getOrgBranding } from "@/lib/server/org-branding";
 import { addProjectDomain } from "@/lib/server/vercel";
 import { EmailTemplateType } from "@/generated/prisma/client";
 
@@ -332,6 +333,7 @@ async function sendWelcomeEmail(
 
   const subject = `Welcome to CGT Sync — your ${args.ctx.orgName} admin account`;
   try {
+    const branding = await getOrgBranding(args.ctx.orgId);
     const html = renderWelcomeEmail({
       recipientEmail: args.email,
       orgName: args.ctx.orgName,
@@ -339,6 +341,7 @@ async function sendWelcomeEmail(
       loginUrl: args.ctx.loginUrl,
       magicLink: args.magicLink,
       tempPassword: args.password,
+      accentColor: branding.accentColor,
     });
     const sendResult = await sendEmail({ to: args.email, subject, html });
 

@@ -34,6 +34,8 @@ interface DisputePdfOptions {
   flaggedItems: FlaggedLineItem[];
   orgName?: string;
   logoBuffer?: Buffer;
+  /** Tenant accent color (e.g. "#2563eb"). Defaults to CGT Sync blue. */
+  accentColor?: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────
@@ -120,10 +122,15 @@ export async function generateDisputePdf(
       }
     }
 
+    const accent = options.accentColor && /^#[0-9a-fA-F]{6}$/.test(options.accentColor)
+      ? options.accentColor
+      : C.blue;
+
     // ──── PAGE 1: Cover + Executive Summary ────
 
-    // Header bar
+    // Header bar with tenant accent stripe
     doc.rect(0, 0, PAGE_W, 70).fill(C.navy);
+    doc.rect(0, 70, PAGE_W, 3).fill(accent);
     let headerTextX = MARGIN;
     if (options.logoBuffer) {
       try {
@@ -174,7 +181,7 @@ export async function generateDisputePdf(
       { label: "Total Disputed", value: fmt(totalDisputed, options.currency), bg: C.redBg, text: C.red },
       { label: "Flagged Items", value: String(items.length), bg: C.amberBg, text: C.amber },
       { label: "Highest Variance", value: highestVariancePct > 0 ? `${highestVariancePct.toFixed(1)}%` : "N/A", bg: C.redBg, text: C.red },
-      { label: "Invoice Total", value: options.totalAmount != null ? fmt(options.totalAmount, options.currency) : "N/A", bg: C.blueBg, text: C.blue },
+      { label: "Invoice Total", value: options.totalAmount != null ? fmt(options.totalAmount, options.currency) : "N/A", bg: C.blueBg, text: accent },
     ];
     for (let i = 0; i < metrics.length; i++) {
       const mx = MARGIN + i * (metricBoxW + 5);
@@ -331,7 +338,7 @@ export async function generateDisputePdf(
       // Right column: Truth Source
       if (item.clause) {
         doc.rect(rightX, twoColY, colW, 60).fillAndStroke(C.blueBg, C.border);
-        doc.fontSize(7).fillColor(C.blue).text("SOW BASELINE CLAUSE", rightX + 8, twoColY + 6, { width: colW - 16 });
+        doc.fontSize(7).fillColor(accent).text("SOW BASELINE CLAUSE", rightX + 8, twoColY + 6, { width: colW - 16 });
         const clauseLabel = item.clause.clauseRef ? `${item.clause.clauseRef}: ${item.clause.title}` : item.clause.title;
         doc.fontSize(8).fillColor(C.dark).text(clauseLabel, rightX + 8, twoColY + 20, { width: colW - 16 });
         if (item.clause.value != null) {

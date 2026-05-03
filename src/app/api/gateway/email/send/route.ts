@@ -14,6 +14,7 @@ import {
   type DisputeDeliveryEmailParams,
   type FollowUpEmailParams,
 } from "@/lib/server/email-templates";
+import { getOrgBranding } from "@/lib/server/org-branding";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TEMPLATE_RENDERERS: Record<string, (data: any) => string> = {
@@ -61,9 +62,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const branding = await getOrgBranding(auth.orgId);
     const html = templateType === "CUSTOM"
       ? (templateData?.html as string) ?? ""
-      : renderer(templateData ?? {});
+      : renderer({ ...(templateData ?? {}), accentColor: branding.accentColor });
 
     // Send via Resend
     const result = await sendEmail({ to: recipientEmail, subject, html });
