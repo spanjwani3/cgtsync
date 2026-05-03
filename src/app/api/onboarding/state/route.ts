@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   const current =
     existing?.onboardingState && typeof existing.onboardingState === "object"
-      ? (existing.onboardingState as Record<string, unknown>)
+      ? (existing.onboardingState as Record<string, string | null>)
       : {};
 
   const next = { ...current, [body.key]: body.value };
