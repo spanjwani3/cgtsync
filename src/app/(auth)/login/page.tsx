@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
@@ -11,6 +11,42 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [processingMagicLink, setProcessingMagicLink] = useState(false);
+
+  // Magic links generated via supabase.auth.admin.generateLink use the
+  // implicit flow — tokens arrive in the URL fragment after Supabase
+  // redirects to /callback. /callback can't see fragments (server-side),
+  // so it bounces here with ?error=auth_failed and the fragment trailing.
+  // Detect the fragment, install the session, and continue to /programs.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token=")) return;
+
+    const params = new URLSearchParams(hash.slice(1));
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    if (!access_token || !refresh_token) return;
+
+    setProcessingMagicLink(true);
+    (async () => {
+      const supabase = createClient();
+      const { error: setErr } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (setErr) {
+        setError(`Magic link sign-in failed: ${setErr.message}`);
+        setProcessingMagicLink(false);
+        // Strip the fragment so refresh doesn't loop.
+        window.history.replaceState({}, "", "/login");
+        return;
+      }
+      // Strip fragment + error query and navigate.
+      router.replace("/programs");
+      router.refresh();
+    })();
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +61,47 @@ export default function LoginPage() {
       router.push("/dashboard");
       router.refresh();
     }
+  }
+
+  if (processingMagicLink) {
+    return (
+      <div className="flex flex-col items-center">
+        <div className="mb-2">
+          <svg
+            className="h-14 w-14 text-teal-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-bold text-white">CGT-Sync</h1>
+        <p className="mt-6 text-sm text-slate-300">Signing you in…</p>
+        <svg
+          className="mt-3 h-5 w-5 animate-spin text-teal-400"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+          />
+        </svg>
+      </div>
+    );
   }
 
   return (
