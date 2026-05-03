@@ -22,7 +22,7 @@ function stepIndex(status: PipelineStatus): number {
 function Spinner() {
   return (
     <svg
-      className="h-4 w-4 animate-spin text-teal-600"
+      className="h-4 w-4 animate-spin text-accent"
       viewBox="0 0 24 24"
       fill="none"
     >
@@ -112,10 +112,10 @@ export default function ExtractionProgress({
   const current = stepIndex(status);
 
   return (
-    <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50/50 p-4">
+    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4">
       <div className="flex items-center gap-3">
         <Spinner />
-        <p className="text-sm font-medium text-teal-900">{progress}</p>
+        <p className="text-sm font-medium text-blue-900">{progress}</p>
       </div>
 
       {/* Step indicators */}
@@ -127,16 +127,16 @@ export default function ExtractionProgress({
             <div key={label} className="flex items-center gap-2">
               {i > 0 && (
                 <div
-                  className={`h-px w-6 ${isDone ? "bg-teal-500" : "bg-zinc-300"}`}
+                  className={`h-px w-6 ${isDone ? "bg-accent" : "bg-zinc-300"}`}
                 />
               )}
               <div className="flex items-center gap-1.5">
                 <div
                   className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
                     isDone
-                      ? "bg-teal-500 text-white"
+                      ? "bg-accent text-white"
                       : isActive
-                        ? "bg-teal-600 text-white"
+                        ? "bg-accent-hover text-white"
                         : "bg-zinc-200 text-zinc-500"
                   }`}
                 >
@@ -149,7 +149,7 @@ export default function ExtractionProgress({
                 <span
                   className={`text-xs ${
                     isDone || isActive
-                      ? "font-medium text-teal-800"
+                      ? "font-medium text-blue-800"
                       : "text-zinc-400"
                   }`}
                 >

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Logo } from "@/components/brand/Logo";
 
 type Status = "installing" | "ready" | "saving" | "done" | "error";
 
@@ -77,7 +78,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="flex flex-col items-center">
         <Shield />
-        <h1 className="text-2xl font-bold text-white">CGT-Sync</h1>
+        <h1 className="text-2xl font-bold text-white">CGT Sync</h1>
         <p className="mt-6 text-sm text-slate-300">Verifying reset link…</p>
         <Spinner />
       </div>
@@ -92,7 +93,7 @@ export default function ResetPasswordPage() {
         <p className="mt-4 text-center text-sm text-slate-400">{errorMsg}</p>
         <Link
           href="/forgot-password"
-          className="mt-8 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-400"
+          className="mt-8 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
         >
           Request a new reset link
         </Link>
@@ -123,7 +124,7 @@ export default function ResetPasswordPage() {
       <Shield />
       <h1 className="text-2xl font-bold text-white">Set new password</h1>
       <p className="mt-2 text-center text-sm text-slate-400">
-        Choose a new password for your CGT-Sync account.
+        Choose a new password for your CGT Sync account.
       </p>
 
       <div className="mt-8 w-full">
@@ -144,7 +145,7 @@ export default function ResetPasswordPage() {
               required
               minLength={8}
               placeholder="At least 8 characters"
-              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <div>
@@ -158,13 +159,13 @@ export default function ResetPasswordPage() {
               required
               minLength={8}
               placeholder="Re-enter password"
-              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+              className="mt-1.5 block w-full rounded-lg border border-slate-600 bg-slate-800/50 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <button
             type="submit"
             disabled={status === "saving"}
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-teal-500 text-sm font-semibold text-white transition-colors hover:bg-teal-400 disabled:opacity-50"
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {status === "saving" ? (
               <span className="flex items-center gap-2">
@@ -184,17 +185,7 @@ export default function ResetPasswordPage() {
 function Shield() {
   return (
     <div className="mb-2">
-      <svg
-        className="h-14 w-14 text-teal-400"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </svg>
+      <Logo size={56} variant="dark" />
     </div>
   );
 }
@@ -202,7 +193,7 @@ function Shield() {
 function Spinner({ small }: { small?: boolean }) {
   return (
     <svg
-      className={`${small ? "h-4 w-4" : "mt-3 h-5 w-5"} animate-spin text-teal-400`}
+      className={`${small ? "h-4 w-4" : "mt-3 h-5 w-5"} animate-spin text-accent`}
       viewBox="0 0 24 24"
       fill="none"
     >

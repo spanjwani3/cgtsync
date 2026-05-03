@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 
 interface ProgramItem {
   id: string;
@@ -144,12 +145,15 @@ export default function ProgramsPage() {
           </select>
         )}
 
-        {loading && (
-          <span className="text-xs text-zinc-400">Loading...</span>
-        )}
       </div>
 
-      {!loading && programs.length === 0 ? (
+      {loading ? (
+        <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : programs.length === 0 ? (
         <div className="mt-16 flex flex-col items-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-light">
             <svg className="h-8 w-8 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>

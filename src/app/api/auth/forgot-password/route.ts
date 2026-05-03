@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ requestId, ...GENERIC_RESPONSE });
     }
 
-    const subject = `Reset your CGT-Sync password`;
+    const subject = `Reset your CGT Sync password`;
     const html = renderPasswordResetEmail({
       recipientEmail: email,
       resetLink: actionLink,

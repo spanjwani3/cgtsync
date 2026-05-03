@@ -46,7 +46,7 @@ export default function ImpactCard({ programId }: { programId: string }) {
         </div>
       </div>
       <div className="mt-3 flex h-2 rounded-full overflow-hidden bg-zinc-100">
-        <div className="bg-teal-500 transition-all" style={{ width: `${baselinePct}%` }} />
+        <div className="bg-accent transition-all" style={{ width: `${baselinePct}%` }} />
         <div className="bg-red-400 transition-all" style={{ width: `${changePct}%` }} />
       </div>
       <div className="mt-1 flex justify-between text-[10px] text-muted">

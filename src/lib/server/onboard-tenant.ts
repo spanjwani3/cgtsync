@@ -330,7 +330,7 @@ async function sendWelcomeEmail(
     };
   }
 
-  const subject = `Welcome to CGT-Sync — your ${args.ctx.orgName} admin account`;
+  const subject = `Welcome to CGT Sync — your ${args.ctx.orgName} admin account`;
   try {
     const html = renderWelcomeEmail({
       recipientEmail: args.email,

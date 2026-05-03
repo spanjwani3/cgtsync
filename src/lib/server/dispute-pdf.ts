@@ -96,7 +96,7 @@ export async function generateDisputePdf(
       size: "A4",
       margin: MARGIN,
       bufferPages: true,
-      info: { Title: "Forensic Dispute Packet", Author: "CGT-Sync" },
+      info: { Title: "Forensic Dispute Packet", Author: "CGT Sync" },
     });
 
     const chunks: Buffer[] = [];
@@ -134,7 +134,7 @@ export async function generateDisputePdf(
       }
     }
     doc.fontSize(18).fillColor(C.white).text("FORENSIC DISPUTE PACKET", headerTextX, 22, { width: USABLE_W - (headerTextX - MARGIN) });
-    const headerLabel = options.orgName ? `CGT-Sync | ${options.orgName} | Confidential` : "CGT-Sync | Confidential";
+    const headerLabel = options.orgName ? `CGT Sync | ${options.orgName} | Confidential` : "CGT Sync | Confidential";
     doc.fontSize(8).fillColor("#aabbcc").text(headerLabel, MARGIN, 48, { width: USABLE_W, align: "left" });
     doc.text(`Generated: ${new Date().toISOString().split("T")[0]}`, MARGIN, 48, { width: USABLE_W, align: "right" });
 
@@ -391,7 +391,7 @@ export async function generateDisputePdf(
         { width: USABLE_W / 3 }
       );
       doc.fontSize(7).fillColor(C.muted).text(
-        "CGT-Sync | Confidential — For Dispute Purposes Only",
+        "CGT Sync | Confidential — For Dispute Purposes Only",
         MARGIN + USABLE_W / 3,
         FOOTER_Y,
         { width: USABLE_W / 3, align: "center" }

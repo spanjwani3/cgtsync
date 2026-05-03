@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
         orgName,
         generatedBy: auth.email,
         sections,
-        footer: "This certificate is a system-generated proof of record from CGT-Sync.",
+        footer: "This certificate is a system-generated proof of record from CGT Sync.",
       });
 
       await logEvent({
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
       orgName,
       generatedBy: auth.email,
       sections: invSections,
-      footer: "This certificate is a system-generated proof of record from CGT-Sync.",
+      footer: "This certificate is a system-generated proof of record from CGT Sync.",
     });
 
     await logEvent({

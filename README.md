@@ -1,8 +1,8 @@
-# CGT-Sync v1.0
+# CGT Sync v1.0
 
 **Financial & Scope Governance Layer for Biopharma Sponsor-CDMO Programs**
 
-CGT-Sync is not a task or PM tool. It is an audit-ready governance platform that helps biopharma sponsors maintain financial control and scope integrity across CDMO manufacturing programs.
+CGT Sync is not a task or PM tool. It is an audit-ready governance platform that helps biopharma sponsors maintain financial control and scope integrity across CDMO manufacturing programs.
 
 ## Core Modules
 

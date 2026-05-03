@@ -1,5 +1,5 @@
 /**
- * CGT-Sync Seed Script
+ * CGT Sync Seed Script
  *
  * Creates a demo organization, user, program, baseline with clauses,
  * changes, an invoice with line items, and evidence records.
@@ -19,7 +19,7 @@ async function main() {
   const userId = process.env.SEED_USER_ID ?? "00000000-0000-0000-0000-000000000001";
   const userEmail = process.env.SEED_USER_EMAIL ?? "demo@cgtsync.dev";
 
-  console.log("Seeding CGT-Sync demo data...\n");
+  console.log("Seeding CGT Sync demo data...\n");
 
   // 1. User
   const user = await prisma.user.upsert({
