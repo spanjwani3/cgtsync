@@ -85,6 +85,16 @@ function LogOutIcon({ className }: { className?: string }) {
   );
 }
 
+function HelpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
 function SettingsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -204,6 +214,17 @@ export default function Sidebar({
     router.refresh();
   }
 
+  async function handleRestartTour() {
+    try {
+      await fetch("/api/onboarding/restart", { method: "POST" });
+    } catch {
+      // Best-effort — even if the write fails, navigating refreshes the
+      // server-rendered onboardingState on the next request.
+    }
+    router.push("/programs");
+    router.refresh();
+  }
+
   const initials = (userName || userEmail || "U")
     .split(/[\s@]+/)
     .slice(0, 2)
@@ -221,6 +242,7 @@ export default function Sidebar({
 
   return (
     <aside
+      data-tour="sidebar-overview"
       className="tenant-branding fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-sidebar-bg"
       style={tenantStyle}
     >
@@ -258,7 +280,10 @@ export default function Sidebar({
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
+      <nav
+        data-tour="sidebar-program-nav"
+        className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3"
+      >
         {currentProgram ? (
           <>
             {PROGRAM_NAV.map((item) => {
@@ -386,6 +411,13 @@ export default function Sidebar({
             Branding
           </Link>
         )}
+        <button
+          onClick={handleRestartTour}
+          className="mt-1 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-bright"
+        >
+          <HelpIcon className="h-3.5 w-3.5" />
+          Restart Tour
+        </button>
         <button
           onClick={handleLogout}
           className="mt-1 flex h-8 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-bright"

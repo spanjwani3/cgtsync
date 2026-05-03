@@ -475,7 +475,7 @@ export default function CockpitPage() {
 
       {/* Metric cards */}
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <Link href={`/programs/${programId}/baseline`} className="card card-hover">
+        <Link href={`/programs/${programId}/baseline`} data-tour="baseline-status" className="card card-hover">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">Truth Status</p>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-50">
@@ -497,7 +497,7 @@ export default function CockpitPage() {
           <p className="mt-1 text-xs text-muted">commitment terms</p>
         </Link>
 
-        <Link href={`/programs/${programId}/changes`} className="card card-hover">
+        <Link href={`/programs/${programId}/changes`} data-tour="changes-panel" className="card card-hover">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">Change Velocity</p>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50">
@@ -510,7 +510,7 @@ export default function CockpitPage() {
           <p className="mt-1 text-xs text-muted">{velocitySub}</p>
         </Link>
 
-        <Link href={`/programs/${programId}/invoices`} className="card card-hover">
+        <Link href={`/programs/${programId}/invoices`} data-tour="invoices-panel" className="card card-hover">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">Invoice Health</p>
             <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${flags.length > 0 ? "bg-red-50" : "bg-green-50"}`}>
