@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/server/auth";
 
-const VALID_KEY = /^tour_v1_(overview|program)_(completed_at|dismissed_at|remind_at)$/;
+const VALID_KEY = /^tour_v1_(completed_at|dismissed_at|remind_at)$/;
 
 export async function POST(req: NextRequest) {
   let auth;
