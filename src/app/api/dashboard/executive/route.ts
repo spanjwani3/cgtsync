@@ -1,24 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
-import { requireAuth } from "@/lib/server/auth";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 
 export async function GET() {
   try {
-    const auth = await requireAuth();
-
-    const membership = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true, role: true },
-    });
-    if (!membership) {
-      return NextResponse.json({ error: "No organization found" }, { status: 404 });
-    }
-    if (membership.role !== OrgRole.ADMIN) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-    }
-
-    const orgId = membership.orgId;
+    const auth = await requireTenantOrgAccess(OrgRole.ADMIN);
+    const orgId = auth.orgId;
 
     // Fetch all invoices across org
     const invoices = await prisma.invoice.findMany({
@@ -129,6 +117,7 @@ export async function GET() {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN") return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     console.error("[GET /api/dashboard/executive] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

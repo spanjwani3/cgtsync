@@ -75,12 +75,27 @@ export async function getOrgMembership(
 
 /**
  * Require org membership. Returns org auth context or responds with error.
+ *
+ * In multi-tenant mode (when `MULTI_TENANT_MODE=true` and the request lands
+ * on a tenant subdomain), middleware sets `x-tenant-org-id` headers. This
+ * helper additionally enforces that the requested `orgId` matches the tenant
+ * org from those headers — defeating cross-tenant URL-fishing attacks where
+ * a multi-org user tries to access a different tenant's resources via direct
+ * URL. When tenant headers are absent (apex domain, admin host, MT_MODE=OFF),
+ * the check is a no-op and behavior matches the original "user must be a
+ * member" check.
  */
 export async function requireOrgAccess(
   orgId: string,
   minRole?: OrgRole
 ): Promise<OrgAuthContext> {
   const auth = await requireAuth();
+
+  const tenantCtx = await getTenantContext();
+  if (tenantCtx && orgId !== tenantCtx.orgId) {
+    throw new Error("FORBIDDEN");
+  }
+
   const membership = await getOrgMembership(auth.userId, orgId);
 
   if (!membership) {
@@ -106,19 +121,50 @@ export async function requireOrgAccess(
 }
 
 /**
- * Require access to the tenant org resolved by subdomain middleware.
- * Use this in routes scoped to the request host rather than a URL param.
- * Falls back to a generic requireAuth if no tenant header is present
- * (multi-tenant mode disabled).
+ * Resolve the request's org context — tenant subdomain in multi-tenant mode,
+ * or the user's primary (earliest-joined) org otherwise.
+ *
+ * Returns OrgAuthContext (always with orgId), unlike the old version which
+ * returned AuthContext-without-orgId when MT_MODE was off. Routes scoped to
+ * "the user's current tenant" (e.g. /api/programs, /api/dashboard/*) should
+ * use this instead of requireAuth + manual orgMember.findFirst lookups —
+ * the helper handles both modes uniformly.
+ *
+ * Throws FORBIDDEN if the user has no membership in the tenant org or no
+ * primary org membership at all.
  */
 export async function requireTenantOrgAccess(
   minRole?: OrgRole,
-): Promise<OrgAuthContext | AuthContext> {
+): Promise<OrgAuthContext> {
   const tenant = await getTenantContext();
-  if (!tenant) {
-    return await requireAuth();
+  if (tenant) {
+    return await requireOrgAccess(tenant.orgId, minRole);
   }
-  return await requireOrgAccess(tenant.orgId, minRole);
+
+  const auth = await requireAuth();
+  const member = await prisma.orgMember.findFirst({
+    where: { userId: auth.userId },
+    orderBy: { createdAt: "asc" },
+    select: { orgId: true, role: true },
+  });
+  if (!member) {
+    throw new Error("FORBIDDEN");
+  }
+  if (minRole) {
+    const roleHierarchy: Record<OrgRole, number> = {
+      [OrgRole.READ_ONLY]: 0,
+      [OrgRole.OPERATOR]: 1,
+      [OrgRole.ADMIN]: 2,
+    };
+    if (roleHierarchy[member.role] < roleHierarchy[minRole]) {
+      throw new Error("FORBIDDEN");
+    }
+  }
+  return {
+    ...auth,
+    orgId: member.orgId,
+    role: member.role,
+  };
 }
 
 /**

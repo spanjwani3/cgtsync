@@ -1,37 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
-import { requireAuth } from "@/lib/server/auth";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 import { generateRequestId, structuredError } from "@/lib/config";
 
-async function getOrgForUser(userId: string) {
-  const membership = await prisma.orgMember.findFirst({
-    where: { userId },
-    select: { orgId: true, role: true },
-  });
-  return membership;
-}
-
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const requestId = generateRequestId();
   try {
-    const auth = await requireAuth();
-    const membership = await getOrgForUser(auth.userId);
-    if (!membership) {
-      return NextResponse.json({ requestId, error: "No organization found" }, { status: 404 });
-    }
+    const auth = await requireTenantOrgAccess(OrgRole.OPERATOR);
 
-    const roleHierarchy: Record<OrgRole, number> = {
-      [OrgRole.READ_ONLY]: 0,
-      [OrgRole.OPERATOR]: 1,
-      [OrgRole.ADMIN]: 2,
-    };
-    if (roleHierarchy[membership.role] < roleHierarchy[OrgRole.OPERATOR]) {
-      return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
-    }
-
-    let config = await prisma.orgEmailConfig.findUnique({
-      where: { orgId: membership.orgId },
+    const config = await prisma.orgEmailConfig.findUnique({
+      where: { orgId: auth.orgId },
     });
 
     // Return empty defaults if no config exists yet
@@ -39,7 +18,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         requestId,
         config: {
-          orgId: membership.orgId,
+          orgId: auth.orgId,
           sendingDomain: null,
           domainVerified: false,
           defaultReplyTo: null,
@@ -55,6 +34,9 @@ export async function GET(req: NextRequest) {
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
     }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ requestId, error: "Forbidden" }, { status: 403 });
+    }
     console.error(structuredError({
       requestId,
       route: "GET /api/org/email-config",
@@ -67,14 +49,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const requestId = generateRequestId();
   try {
-    const auth = await requireAuth();
-    const membership = await getOrgForUser(auth.userId);
-    if (!membership) {
-      return NextResponse.json({ requestId, error: "No organization found" }, { status: 404 });
-    }
-    if (membership.role !== OrgRole.ADMIN) {
-      return NextResponse.json({ requestId, error: "Admin role required" }, { status: 403 });
-    }
+    const auth = await requireTenantOrgAccess(OrgRole.ADMIN);
 
     const body = await req.json();
     const allowedFields = ["sendingDomain", "defaultReplyTo"];
@@ -84,10 +59,10 @@ export async function PATCH(req: NextRequest) {
     }
 
     const config = await prisma.orgEmailConfig.upsert({
-      where: { orgId: membership.orgId },
+      where: { orgId: auth.orgId },
       update: data,
       create: {
-        orgId: membership.orgId,
+        orgId: auth.orgId,
         ...data,
       },
     });
@@ -97,6 +72,9 @@ export async function PATCH(req: NextRequest) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ requestId, error: "Unauthorized" }, { status: 401 });
+    }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ requestId, error: "Admin role required" }, { status: 403 });
     }
     console.error(structuredError({
       requestId,

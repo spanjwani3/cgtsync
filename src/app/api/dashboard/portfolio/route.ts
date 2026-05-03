@@ -1,25 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
-import { requireAuth } from "@/lib/server/auth";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAuth();
-
-    const membership = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true, role: true },
-    });
-    if (!membership) {
-      return NextResponse.json({ error: "No organization found" }, { status: 404 });
-    }
-    if (membership.role !== OrgRole.ADMIN) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-    }
+    const auth = await requireTenantOrgAccess(OrgRole.ADMIN);
 
     const assignedPmId = req.nextUrl.searchParams.get("assignedPmId");
-    const where: Record<string, unknown> = { orgId: membership.orgId };
+    const where: Record<string, unknown> = { orgId: auth.orgId };
     if (assignedPmId) where.assignedPmId = assignedPmId;
 
     const programs = await prisma.program.findMany({
@@ -93,6 +82,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN") return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     console.error("[GET /api/dashboard/portfolio] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

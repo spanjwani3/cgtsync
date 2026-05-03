@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/server/auth";
+import { OrgRole } from "@/generated/prisma/client";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 import { uploadEvidence } from "@/lib/server/storage";
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth();
-
-    const membership = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true },
-    });
-
-    if (!membership) {
-      return NextResponse.json({ error: "No organization found" }, { status: 404 });
-    }
+    const auth = await requireTenantOrgAccess(OrgRole.ADMIN);
 
     const formData = await req.formData();
     const file = formData.get("file");
@@ -25,12 +17,12 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const path = `org-logos/${membership.orgId}/${file.name}`;
+    const path = `org-logos/${auth.orgId}/${file.name}`;
 
     await uploadEvidence(buffer, path, file.type);
 
     const org = await prisma.organization.update({
-      where: { id: membership.orgId },
+      where: { id: auth.orgId },
       data: { logoUrl: `evidence/${path}` },
       select: { logoUrl: true },
     });
@@ -41,26 +33,20 @@ export async function POST(req: NextRequest) {
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
     console.error("[POST /api/org/logo] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
-    const auth = await requireAuth();
-
-    const membership = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true },
-    });
-
-    if (!membership) {
-      return NextResponse.json({ error: "No organization found" }, { status: 404 });
-    }
+    const auth = await requireTenantOrgAccess();
 
     const org = await prisma.organization.findUnique({
-      where: { id: membership.orgId },
+      where: { id: auth.orgId },
       select: { id: true, name: true, slug: true, logoUrl: true },
     });
 
@@ -73,6 +59,9 @@ export async function GET(req: NextRequest) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error("[GET /api/org/logo] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

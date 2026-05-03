@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ImportTargetType } from "@/generated/prisma/client";
-import { requireAuth } from "@/lib/server/auth";
+import { ImportTargetType, OrgRole } from "@/generated/prisma/client";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAuth();
-    const member = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true },
-    });
-    if (!member) {
-      return NextResponse.json({ error: "No organization found" }, { status: 403 });
-    }
+    const auth = await requireTenantOrgAccess();
 
     const targetType = req.nextUrl.searchParams.get("targetType");
-    const where: { orgId: string; targetType?: ImportTargetType } = { orgId: member.orgId };
+    const where: { orgId: string; targetType?: ImportTargetType } = { orgId: auth.orgId };
     if (targetType && Object.values(ImportTargetType).includes(targetType as ImportTargetType)) {
       where.targetType = targetType as ImportTargetType;
     }
@@ -29,6 +22,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     console.error("[GET /api/gateway/import/mappings] Error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -36,14 +30,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth();
-    const member = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true },
-    });
-    if (!member) {
-      return NextResponse.json({ error: "No organization found" }, { status: 403 });
-    }
+    const auth = await requireTenantOrgAccess(OrgRole.OPERATOR);
 
     const body = await req.json();
     const { name, targetType, columnMap } = body;
@@ -64,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     const mapping = await prisma.importMapping.create({
       data: {
-        orgId: member.orgId,
+        orgId: auth.orgId,
         name,
         targetType,
         columnMap,
@@ -75,6 +62,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "FORBIDDEN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     console.error("[POST /api/gateway/import/mappings] Error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
