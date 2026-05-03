@@ -393,6 +393,19 @@ export default function Sidebar({
           <LogOutIcon className="h-3.5 w-3.5" />
           Sign Out
         </button>
+        {logoUrl && (
+          <a
+            href="https://cgtsync.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 flex items-center justify-center gap-1.5 border-t border-sidebar-border pt-2 text-[10px] text-sidebar-text transition-colors hover:text-sidebar-text-bright"
+          >
+            <Logo size={12} variant="mark" />
+            <span>
+              Powered by <span className="font-semibold">CGT Sync</span>
+            </span>
+          </a>
+        )}
       </div>
     </aside>
   );
