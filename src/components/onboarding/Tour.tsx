@@ -8,6 +8,9 @@ interface Props {
   run: boolean;
   onFinished: () => void;
   onSkipped: () => void;
+  /** Optional remount hint — pass the active stage name so Joyride
+   *  starts at step 0 cleanly when the stage changes. */
+  resetKey?: string;
 }
 
 /**
@@ -16,7 +19,7 @@ interface Props {
  * Imported via `next/dynamic({ ssr: false })` from OnboardingProvider —
  * react-joyride touches `window` on mount so SSR would crash.
  */
-export default function Tour({ steps, run, onFinished, onSkipped }: Props) {
+export default function Tour({ steps, run, onFinished, onSkipped, resetKey }: Props) {
   const handleCallback = useCallback(
     (data: CallBackProps) => {
       const { status } = data;
@@ -31,6 +34,7 @@ export default function Tour({ steps, run, onFinished, onSkipped }: Props) {
 
   return (
     <Joyride
+      key={resetKey}
       steps={steps}
       run={run}
       continuous
