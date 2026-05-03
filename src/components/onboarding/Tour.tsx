@@ -2,11 +2,9 @@
 
 import { useCallback } from "react";
 import Joyride, { CallBackProps, STATUS, type Step } from "react-joyride";
-import type { TourStage } from "@/lib/onboarding/tourSteps";
 
 interface Props {
   steps: Step[];
-  stage: TourStage;
   run: boolean;
   onFinished: () => void;
   onSkipped: () => void;
@@ -18,7 +16,7 @@ interface Props {
  * Imported via `next/dynamic({ ssr: false })` from OnboardingProvider —
  * react-joyride touches `window` on mount so SSR would crash.
  */
-export default function Tour({ steps, stage, run, onFinished, onSkipped }: Props) {
+export default function Tour({ steps, run, onFinished, onSkipped }: Props) {
   const handleCallback = useCallback(
     (data: CallBackProps) => {
       const { status } = data;
@@ -33,7 +31,6 @@ export default function Tour({ steps, stage, run, onFinished, onSkipped }: Props
 
   return (
     <Joyride
-      key={stage}
       steps={steps}
       run={run}
       continuous
