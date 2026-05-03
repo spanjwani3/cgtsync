@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformAdmin } from "@/lib/server/auth";
 import { onboardTenant, OnboardError } from "@/lib/server/onboard-tenant";
+import { removeProjectDomain } from "@/lib/server/vercel";
 import { generateRequestId, structuredError } from "@/lib/config";
 
 export async function GET() {
@@ -47,6 +48,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ requestId, ...result });
   } catch (e) {
     return errorResponse(requestId, e, "/api/admin/tenants POST");
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const requestId = generateRequestId();
+  try {
+    await requirePlatformAdmin();
+    const slug = req.nextUrl.searchParams.get("slug")?.trim().toLowerCase();
+    if (!slug) {
+      return NextResponse.json(
+        { requestId, error: "slug query param required" },
+        { status: 400 },
+      );
+    }
+
+    const org = await prisma.organization.findUnique({ where: { slug } });
+    if (!org) {
+      return NextResponse.json(
+        { requestId, error: "Tenant not found" },
+        { status: 404 },
+      );
+    }
+
+    // Cascade-delete via Postgres (Program → all program children, OrgMember,
+    // IngestAddress, EmailLog, etc. — all FKs onDelete: Cascade per schema).
+    // Supabase auth.users entries are intentionally retained because they may
+    // hold memberships in other orgs; can be pruned via maintenance script later.
+    // TODO: emit TENANT_DELETED event once enum migration ships.
+    await prisma.organization.delete({ where: { slug } });
+
+    // Best-effort: detach Vercel domain so dead subdomains don't accumulate.
+    const rootDomain = process.env.ROOT_DOMAIN ?? "cgtsync.ai";
+    const vercelDomain = await removeProjectDomain(`${slug}.${rootDomain}`);
+
+    return NextResponse.json({
+      requestId,
+      deleted: true,
+      slug,
+      vercelDomain,
+    });
+  } catch (e) {
+    return errorResponse(requestId, e, "/api/admin/tenants DELETE");
   }
 }
 
