@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/server/auth";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
-    const auth = await requireAuth();
-
-    const membership = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true },
-    });
-
-    if (!membership) {
-      return NextResponse.json({ error: "No organization found" }, { status: 404 });
-    }
+    const auth = await requireTenantOrgAccess();
 
     const members = await prisma.orgMember.findMany({
-      where: { orgId: membership.orgId },
+      where: { orgId: auth.orgId },
       include: {
         user: { select: { id: true, fullName: true, email: true } },
       },
@@ -35,6 +26,9 @@ export async function GET(req: NextRequest) {
     const message = e instanceof Error ? e.message : "Unknown error";
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error("[GET /api/org/members] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

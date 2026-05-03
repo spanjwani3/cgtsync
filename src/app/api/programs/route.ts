@@ -1,25 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/generated/prisma/client";
-import { requireAuth, requireOrgAccess } from "@/lib/server/auth";
+import { requireTenantOrgAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAuth();
-
-    // Look up user's first org membership
-    const membership = await prisma.orgMember.findFirst({
-      where: { userId: auth.userId },
-      select: { orgId: true },
-    });
-
-    if (!membership) {
-      return NextResponse.json({ error: "No organization found" }, { status: 404 });
-    }
+    const auth = await requireTenantOrgAccess();
 
     const assignedPmId = req.nextUrl.searchParams.get("assignedPmId");
-    const where: Record<string, unknown> = { orgId: membership.orgId };
+    const where: Record<string, unknown> = { orgId: auth.orgId };
     if (assignedPmId) where.assignedPmId = assignedPmId;
 
     const programs = await prisma.program.findMany({
@@ -37,6 +27,9 @@ export async function GET(req: NextRequest) {
     if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     console.error("[GET /api/programs] Unhandled error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -44,7 +37,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth();
+    const auth = await requireTenantOrgAccess(OrgRole.OPERATOR);
     const body = await req.json();
     const { name, cdmoName, molecule, modality, description, currency, changeThreshold, assignedPmId } = body;
 
@@ -55,24 +48,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Resolve orgId: use provided or fall back to user's first org
-    let resolvedOrgId = body.orgId;
-    if (!resolvedOrgId) {
-      const membership = await prisma.orgMember.findFirst({
-        where: { userId: auth.userId },
-        select: { orgId: true },
-      });
-      if (!membership) {
-        return NextResponse.json({ error: "No organization found" }, { status: 404 });
-      }
-      resolvedOrgId = membership.orgId;
-    }
-
-    await requireOrgAccess(resolvedOrgId, OrgRole.OPERATOR);
-
     const program = await prisma.program.create({
       data: {
-        orgId: resolvedOrgId,
+        orgId: auth.orgId,
         name,
         cdmoName,
         molecule: molecule ?? null,
