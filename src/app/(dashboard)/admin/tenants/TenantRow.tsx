@@ -102,7 +102,13 @@ function DeleteTenantModal({
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body.error ?? `HTTP ${res.status}`);
+        // Surface Prisma details when present so admins can diagnose
+        // without digging through Vercel function logs.
+        const parts = [body.error ?? `HTTP ${res.status}`];
+        if (body.details && body.details !== body.error) parts.push(body.details);
+        if (body.prismaCode) parts.push(`prismaCode: ${body.prismaCode}`);
+        if (body.prismaMeta) parts.push(`prismaMeta: ${JSON.stringify(body.prismaMeta)}`);
+        setError(parts.join(" — "));
         setSubmitting(false);
         return;
       }
@@ -152,8 +158,8 @@ function DeleteTenantModal({
           disabled={submitting}
         />
         {error && (
-          <div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-            {error}
+          <div className="mt-3 max-h-48 overflow-auto rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+            <pre className="whitespace-pre-wrap break-words font-mono">{error}</pre>
           </div>
         )}
         <div className="mt-4 flex items-center justify-end gap-2">
