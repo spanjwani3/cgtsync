@@ -6,6 +6,7 @@ import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import QuickLogModal from "@/components/cockpit/QuickLogModal";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
+import { formatCompact } from "@/lib/format";
 
 interface Program {
   id: string;
@@ -147,6 +148,7 @@ export default function CockpitPage() {
   const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [openScopeAlerts, setOpenScopeAlerts] = useState(0);
+  const [openScopeImpact, setOpenScopeImpact] = useState(0);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [emailDetail, setEmailDetail] = useState<EmailDetail | null>(null);
   const [emailEvents, setEmailEvents] = useState<EmailDetailEvent[]>([]);
@@ -203,6 +205,7 @@ export default function CockpitPage() {
       const scopeData = await scopeRes.json();
       scopeAlertCount = scopeData.stats?.open ?? 0;
       setOpenScopeAlerts(scopeAlertCount);
+      setOpenScopeImpact(Number(scopeData.stats?.openImpact ?? 0));
     }
 
     // Build smart tasks
@@ -520,7 +523,11 @@ export default function CockpitPage() {
           <p className={`mt-2 text-2xl font-bold ${flags.length > 0 ? "text-red-600" : "text-zinc-900"}`}>
             {flags.length > 0 ? `${flags.length} Flagged` : `${program._count.invoices} Clean`}
           </p>
-          <p className="mt-1 text-xs text-muted">{program._count.invoices} invoice{program._count.invoices !== 1 ? "s" : ""} total</p>
+          <p className="mt-1 text-xs text-muted">
+            {flags.length > 0
+              ? `${formatCompact(flags.reduce((s, f) => s + Number(f.amount), 0), program.currency)} under review`
+              : `${program._count.invoices} invoice${program._count.invoices !== 1 ? "s" : ""} total`}
+          </p>
         </Link>
 
         <Link href={`/programs/${programId}/scope`} className="card card-hover">
@@ -533,7 +540,11 @@ export default function CockpitPage() {
           <p className={`mt-2 text-2xl font-bold ${openScopeAlerts > 0 ? "text-amber-600" : "text-zinc-900"}`}>
             {openScopeAlerts > 0 ? `${openScopeAlerts} Open` : "All Clear"}
           </p>
-          <p className="mt-1 text-xs text-muted">scope creep detection</p>
+          <p className="mt-1 text-xs text-muted">
+            {openScopeAlerts > 0 && openScopeImpact > 0
+              ? `${formatCompact(openScopeImpact, program.currency)} potential impact`
+              : "scope creep detection"}
+          </p>
         </Link>
       </div>
 
