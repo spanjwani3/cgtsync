@@ -65,7 +65,7 @@ export async function POST(
     await requirePlatformAdmin();
     const { programId } = await params;
     const body = (await req.json().catch(() => null)) as
-      | { confirmName?: unknown; keepEventLogs?: unknown }
+      | { confirmName?: unknown }
       | null;
     if (!body || typeof body.confirmName !== "string") {
       return NextResponse.json(
@@ -100,9 +100,7 @@ export async function POST(
     }
 
     const before = await countProgramData(program.id);
-    await wipeProgramData(program.id, {
-      keepEventLogs: body.keepEventLogs === true,
-    });
+    await wipeProgramData(program.id);
     const after = await countProgramData(program.id);
 
     return NextResponse.json({

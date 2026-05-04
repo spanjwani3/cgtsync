@@ -4,7 +4,8 @@
  * and the ops CLI script (scripts/wipe-program-data.ts).
  *
  * "Program shell" preserved: Program row, Organization, OrgMembers, branding,
- * IngestAddress(es). Wipes everything else child-of-program.
+ * IngestAddress(es), EventLogs (DB-enforced append-only audit trail). Wipes
+ * everything else child-of-program.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -99,13 +100,16 @@ export async function countProgramData(programId: string): Promise<WipeCounts> {
  * FKs that aren't fully cascaded. Runs in a single transaction so a
  * mid-flight failure rolls back.
  */
-export async function wipeProgramData(
-  programId: string,
-  opts: { keepEventLogs?: boolean } = {},
-): Promise<void> {
-  const keepEventLogs = opts.keepEventLogs ?? false;
-
+export async function wipeProgramData(programId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    // Defense in depth: same bypass used by tenant deletion
+    // (src/app/api/admin/tenants/route.ts). The append-only trigger on
+    // event_logs raises on any UPDATE/DELETE; this SET LOCAL allows the
+    // bypass-aware trigger function to skip enforcement for the current
+    // transaction. We don't intentionally touch event_logs here, but any
+    // future cascade (e.g. a new FK from event_logs) won't break the wipe.
+    await tx.$executeRawUnsafe(`SET LOCAL app.bypass_event_log_lock = 'on'`);
+
     // 1. MagicLinks reference EmailLogs (nullable FK, no cascade).
     await tx.magicLink.deleteMany({ where: { emailLog: { programId } } });
 
@@ -157,9 +161,8 @@ export async function wipeProgramData(
     // 16. ProgramContacts.
     await tx.programContact.deleteMany({ where: { programId } });
 
-    // 17. EventLogs (programId nullable, no cascade — must be explicit).
-    if (!keepEventLogs) {
-      await tx.eventLog.deleteMany({ where: { programId } });
-    }
+    // EventLogs are intentionally NOT deleted: the DB enforces an append-only
+    // trigger on event_logs (any DELETE/UPDATE raises and rolls back the tx).
+    // The audit trail is immutable by design.
   });
 }

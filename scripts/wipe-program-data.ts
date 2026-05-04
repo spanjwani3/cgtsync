@@ -6,7 +6,8 @@
  * browser or want to script the wipe.
  *
  * "Program shell" preserved: Program row, Organization, OrgMembers,
- * branding, IngestAddress(es). Wipes everything else.
+ * branding, IngestAddress(es), EventLogs (DB-enforced append-only audit
+ * trail). Wipes everything else.
  *
  * Usage:
  *   # Dry-run (default): prints counts, makes no changes.
@@ -38,19 +39,14 @@ interface Args {
   slug?: string;
   programName?: string;
   apply: boolean;
-  keepEventLogs: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const out: Partial<Args> = { apply: false, keepEventLogs: false };
+  const out: Partial<Args> = { apply: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--apply") {
       out.apply = true;
-      continue;
-    }
-    if (a === "--keep-event-logs") {
-      out.keepEventLogs = true;
       continue;
     }
     if (!a.startsWith("--")) continue;
@@ -67,7 +63,6 @@ function parseArgs(argv: string[]): Args {
     slug: out.slug,
     programName: out.programName,
     apply: out.apply ?? false,
-    keepEventLogs: out.keepEventLogs ?? false,
   };
 }
 
@@ -121,8 +116,7 @@ async function main() {
     before.programContacts +
     before.scopeAnalyses +
     before.scopeAlerts +
-    before.inboundEmails +
-    (args.keepEventLogs ? 0 : before.eventLogs);
+    before.inboundEmails;
 
   console.log("");
   console.log(`Program: ${program.name}`);
@@ -146,14 +140,12 @@ async function main() {
   console.log(`  scope analyses         : ${before.scopeAnalyses}`);
   console.log(`  scope alerts           : ${before.scopeAlerts}`);
   console.log(`  inbound emails         : ${before.inboundEmails}`);
-  console.log(
-    `  event logs             : ${args.keepEventLogs ? "(kept) " : ""}${before.eventLogs}`,
-  );
   console.log(`  ── total rows          : ${total}`);
   console.log("");
   console.log("Will PRESERVE:");
   console.log(`  program row            : 1`);
   console.log(`  ingest addresses       : ${before.ingestAddresses}`);
+  console.log(`  event logs (immutable) : ${before.eventLogs}`);
   console.log(`  organization, members, branding`);
   console.log("");
 
@@ -163,7 +155,7 @@ async function main() {
   }
 
   console.log("APPLYING wipe…");
-  await wipeProgramData(program.id, { keepEventLogs: args.keepEventLogs });
+  await wipeProgramData(program.id);
 
   const after = await countProgramData(program.id);
   console.log("");

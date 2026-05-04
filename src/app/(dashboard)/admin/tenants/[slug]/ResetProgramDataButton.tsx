@@ -36,7 +36,6 @@ export default function ResetProgramDataButton({ programId, programName }: Props
   const [counts, setCounts] = useState<WipeCounts | null>(null);
   const [orgMemberCount, setOrgMemberCount] = useState<number>(0);
   const [confirmName, setConfirmName] = useState("");
-  const [keepEventLogs, setKeepEventLogs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ before: WipeCounts; after: WipeCounts } | null>(null);
 
@@ -74,7 +73,7 @@ export default function ResetProgramDataButton({ programId, programName }: Props
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ confirmName: confirmName.trim(), keepEventLogs }),
+          body: JSON.stringify({ confirmName: confirmName.trim() }),
         },
       );
       const body = await res.json().catch(() => ({}));
@@ -123,8 +122,6 @@ export default function ResetProgramDataButton({ programId, programName }: Props
                 error={error}
                 confirmName={confirmName}
                 setConfirmName={setConfirmName}
-                keepEventLogs={keepEventLogs}
-                setKeepEventLogs={setKeepEventLogs}
                 onCancel={close}
                 onApply={handleApply}
               />
@@ -144,8 +141,6 @@ function PreviewView({
   error,
   confirmName,
   setConfirmName,
-  keepEventLogs,
-  setKeepEventLogs,
   onCancel,
   onApply,
 }: {
@@ -156,8 +151,6 @@ function PreviewView({
   error: string | null;
   confirmName: string;
   setConfirmName: (v: string) => void;
-  keepEventLogs: boolean;
-  setKeepEventLogs: (v: boolean) => void;
   onCancel: () => void;
   onApply: () => void;
 }) {
@@ -177,8 +170,7 @@ function PreviewView({
       counts.programContacts +
       counts.scopeAnalyses +
       counts.scopeAlerts +
-      counts.inboundEmails +
-      (keepEventLogs ? 0 : counts.eventLogs)
+      counts.inboundEmails
     : 0;
 
   const canApply = !!counts && confirmName.trim() === programName && !loading;
@@ -211,10 +203,6 @@ function PreviewView({
           <Row label="Program contacts" n={counts.programContacts} />
           <Row label="Scope analyses + alerts" n={counts.scopeAnalyses + counts.scopeAlerts} />
           <Row label="Inbound emails" n={counts.inboundEmails} />
-          <Row
-            label={`Event logs${keepEventLogs ? " (kept)" : ""}`}
-            n={keepEventLogs ? 0 : counts.eventLogs}
-          />
           <div className="mt-2 border-t border-zinc-200 pt-2 font-semibold text-zinc-900">
             Total rows: {total}
           </div>
@@ -222,20 +210,11 @@ function PreviewView({
             Preserved: program row, organization, all login users (
             {orgMemberCount} member{orgMemberCount === 1 ? "" : "s"}), branding,{" "}
             {counts.ingestAddresses} ingest address
-            {counts.ingestAddresses === 1 ? "" : "es"}.
+            {counts.ingestAddresses === 1 ? "" : "es"},{" "}
+            {counts.eventLogs} event log
+            {counts.eventLogs === 1 ? "" : "s"} (audit trail is append-only).
           </div>
         </div>
-      )}
-
-      {counts && (
-        <label className="mt-3 flex items-center gap-2 text-xs text-zinc-700">
-          <input
-            type="checkbox"
-            checked={keepEventLogs}
-            onChange={(e) => setKeepEventLogs(e.target.checked)}
-          />
-          Keep event logs (preserve audit trail)
-        </label>
       )}
 
       {counts && (
@@ -299,8 +278,7 @@ function DoneView({
     before.invoices +
     before.evidences +
     before.scopeAlerts +
-    before.emailLogs +
-    before.eventLogs;
+    before.emailLogs;
   return (
     <>
       <h2 className="text-lg font-semibold text-zinc-900">Done</h2>
@@ -314,7 +292,7 @@ function DoneView({
         <Row label="Evidence (after)" n={after.evidences} />
         <Row label="Scope alerts (after)" n={after.scopeAlerts} />
         <Row label="Email logs (after)" n={after.emailLogs} />
-        <Row label="Event logs (after)" n={after.eventLogs} />
+        <Row label="Event logs (preserved — audit trail)" n={after.eventLogs} />
         <Row label="Ingest addresses (preserved)" n={after.ingestAddresses} />
       </div>
       <div className="mt-4 flex justify-end">
