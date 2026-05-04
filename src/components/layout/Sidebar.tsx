@@ -294,6 +294,7 @@ export default function Sidebar({
                 <Link
                   key={item.key}
                   href={href}
+                  data-tour={`nav-${item.key}`}
                   className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
                     active
                       ? "bg-sidebar-active font-medium text-white"
