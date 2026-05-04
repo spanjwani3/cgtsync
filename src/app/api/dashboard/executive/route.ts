@@ -25,7 +25,9 @@ export async function GET() {
     let totalInvoiced = 0;
     let totalOutstanding = 0;
     let flaggedCount = 0;
+    let flaggedAmount = 0;
     let disputedCount = 0;
+    let disputedAmount = 0;
 
     // Aging buckets
     const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0, noDueDate: 0 };
@@ -46,8 +48,14 @@ export async function GET() {
       if (inv.status !== "APPROVED") {
         totalOutstanding += amount;
       }
-      if (inv.status === "FLAGGED") flaggedCount++;
-      if (inv.status === "DISPUTED") disputedCount++;
+      if (inv.status === "FLAGGED") {
+        flaggedCount++;
+        flaggedAmount += amount;
+      }
+      if (inv.status === "DISPUTED") {
+        disputedCount++;
+        disputedAmount += amount;
+      }
 
       // Aging
       if (inv.dueDate && inv.status !== "APPROVED") {
@@ -100,7 +108,9 @@ export async function GET() {
         totalInvoiced,
         totalOutstanding,
         flaggedCount,
+        flaggedAmount,
         disputedCount,
+        disputedAmount,
         currency,
         invoiceCount: invoices.length,
       },

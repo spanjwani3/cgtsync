@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatCompact } from "@/lib/format";
 
 interface AgingBucket {
   label: string;
@@ -22,7 +23,9 @@ interface ExecutiveData {
     totalInvoiced: number;
     totalOutstanding: number;
     flaggedCount: number;
+    flaggedAmount: number;
     disputedCount: number;
+    disputedAmount: number;
     currency: string;
     invoiceCount: number;
   };
@@ -131,10 +134,16 @@ export default function ExecutiveDashboard({ readOnly }: ExecutiveDashboardProps
         <div className="card">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Flagged</p>
           <p className={`mt-2 text-2xl font-bold ${metrics.flaggedCount > 0 ? "text-red-600" : "text-zinc-900"}`}>{metrics.flaggedCount}</p>
+          {metrics.flaggedCount > 0 && (
+            <p className="mt-1 text-xs text-muted">{formatCompact(metrics.flaggedAmount, metrics.currency)} under review</p>
+          )}
         </div>
         <div className="card">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Disputed</p>
           <p className={`mt-2 text-2xl font-bold ${metrics.disputedCount > 0 ? "text-red-600" : "text-zinc-900"}`}>{metrics.disputedCount}</p>
+          {metrics.disputedCount > 0 && (
+            <p className="mt-1 text-xs text-muted">{formatCompact(metrics.disputedAmount, metrics.currency)} being challenged</p>
+          )}
         </div>
       </div>
 

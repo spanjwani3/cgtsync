@@ -46,11 +46,18 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
+    const sumImpact = (predicate: (a: (typeof alerts)[number]) => boolean) =>
+      alerts.reduce(
+        (acc, a) => (predicate(a) && a.estimatedImpact ? acc + Number(a.estimatedImpact) : acc),
+        0,
+      );
+
     const stats = {
       total: alerts.length,
       open: alerts.filter((a) => a.status === "OPEN").length,
       converted: alerts.filter((a) => a.status === "CONVERTED").length,
       dismissed: alerts.filter((a) => a.status === "DISMISSED").length,
+      openImpact: sumImpact((a) => a.status === "OPEN"),
     };
 
     return NextResponse.json({ requestId, alerts, stats });

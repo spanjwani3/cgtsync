@@ -6,6 +6,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import TranscriptUpload from "@/components/scope/TranscriptUpload";
 import ScopeAlertCard from "@/components/scope/ScopeAlertCard";
 import IngestSetup from "@/components/scope/IngestSetup";
+import SpendVsEnvelope from "@/components/scope/SpendVsEnvelope";
 import { useSyncProgram } from "@/components/layout/useSyncProgram";
 
 interface ScopeAlert {
@@ -193,6 +194,11 @@ export default function ScopeMonitorPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Analyses Run</p>
           <p className="mt-2 text-2xl font-bold text-zinc-900">{analyses.length}</p>
         </div>
+      </div>
+
+      {/* Spend vs SOW Envelope — answers "where are we against plan?" for both sponsor and CDMO */}
+      <div className="mt-6">
+        <SpendVsEnvelope programId={programId} />
       </div>
 
       {/* Filter tabs */}
