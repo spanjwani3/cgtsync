@@ -66,7 +66,7 @@ export class OnboardError extends Error {
 const PW_ALPHABET =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
-function generatePassword(): string {
+export function generatePassword(): string {
   const bytes = randomBytes(16);
   let out = "";
   for (let i = 0; i < 16; i++) {
@@ -75,7 +75,7 @@ function generatePassword(): string {
   return out;
 }
 
-function getAdminSupabase(): SupabaseClient {
+export function getAdminSupabase(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
@@ -199,7 +199,7 @@ export async function onboardTenant(args: OnboardArgs): Promise<OnboardResult> {
   };
 }
 
-interface ProvisionContext {
+export interface ProvisionContext {
   orgId: string;
   orgSlug: string;
   orgName: string;
@@ -207,6 +207,37 @@ interface ProvisionContext {
   programName: string;
   tenantHost: string;
   loginUrl: string;
+}
+
+/**
+ * Build a ProvisionContext for an org by looking up its first program.
+ * Used by post-onboarding flows (invite-member, resend-invite) that don't
+ * have a programId in scope but need to send a welcome email.
+ */
+export async function buildProvisionContextForOrg(
+  orgId: string,
+): Promise<ProvisionContext | null> {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { id: true, name: true, slug: true },
+  });
+  if (!org) return null;
+  const program = await prisma.program.findFirst({
+    where: { orgId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true },
+  });
+  const rootDomain = process.env.ROOT_DOMAIN ?? "cgtsync.ai";
+  const tenantHost = `https://${org.slug}.${rootDomain}`;
+  return {
+    orgId: org.id,
+    orgSlug: org.slug,
+    orgName: org.name,
+    programId: program?.id ?? "",
+    programName: program?.name ?? "",
+    tenantHost,
+    loginUrl: `${tenantHost}/login`,
+  };
 }
 
 async function provisionAdmin(
@@ -310,7 +341,7 @@ async function provisionAdmin(
   };
 }
 
-interface SendWelcomeArgs {
+export interface SendWelcomeArgs {
   ctx: ProvisionContext;
   userId: string;
   email: string;
@@ -320,7 +351,7 @@ interface SendWelcomeArgs {
   skipReason: string | null;
 }
 
-async function sendWelcomeEmail(
+export async function sendWelcomeEmail(
   args: SendWelcomeArgs,
 ): Promise<{ sent: boolean; resendId: string | null; error: string | null }> {
   if (args.skipReason || !args.magicLink) {

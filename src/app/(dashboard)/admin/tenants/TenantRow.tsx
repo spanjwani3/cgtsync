@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface TenantRowProps {
   org: {
@@ -24,7 +25,14 @@ export default function TenantRow({ org, rootDomain }: TenantRowProps) {
       <div className="card">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="font-semibold text-zinc-900">{org.name}</h3>
+            <h3 className="font-semibold text-zinc-900">
+              <Link
+                href={`/admin/tenants/${org.slug}`}
+                className="hover:text-accent-text hover:underline"
+              >
+                {org.name}
+              </Link>
+            </h3>
             <p className="mt-0.5 text-xs text-muted">
               <span className="font-mono">{org.slug}</span>
               {isSubdomainTenant && (
