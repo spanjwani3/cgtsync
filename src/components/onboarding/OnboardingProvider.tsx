@@ -26,7 +26,11 @@ interface Props {
 }
 
 const OVERVIEW_PATH_REGEX = /^\/programs\/?$/;
-const COCKPIT_PATH_REGEX = /^\/programs\/[^/]+\/cockpit\/?$/;
+// Match any program subroute (cockpit, baseline, changes, invoices, etc.) —
+// Stage 2 anchors on sidebar PROGRAM_NAV items which are visible everywhere
+// inside a program, so the tour fires reliably regardless of which subroute
+// the user lands on.
+const PROGRAM_SUBROUTE_REGEX = /^\/programs\/[^/]+\/[^/]+\/?$/;
 
 function shouldFireStage(
   stage: TourStage,
@@ -66,13 +70,12 @@ export default function OnboardingProvider({ initialState, children }: Props) {
     }
 
     if (
-      COCKPIT_PATH_REGEX.test(pathname ?? "") &&
+      PROGRAM_SUBROUTE_REGEX.test(pathname ?? "") &&
       shouldFireStage("program", state, now)
     ) {
-      // Cockpit-side cards (Truth Status, Change Velocity, Invoice Health)
-      // mount slightly later than the page itself — give them a beat before
-      // Joyride scans for the anchors.
-      const t = setTimeout(() => setActiveStage("program"), 700);
+      // Sidebar PROGRAM_NAV items are server-rendered, no data fetch wait.
+      // 400ms matches the Stage 1 delay for consistency.
+      const t = setTimeout(() => setActiveStage("program"), 400);
       return () => clearTimeout(t);
     }
 
