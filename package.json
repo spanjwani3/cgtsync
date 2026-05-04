@@ -12,7 +12,8 @@
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio",
-    "db:gen-migrations": "npx tsx scripts/gen-migrations-from-prod.ts"
+    "db:gen-migrations": "npx tsx scripts/gen-migrations-from-prod.ts",
+    "db:backup": "npx tsx scripts/backup-db.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
