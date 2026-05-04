@@ -102,6 +102,14 @@ export async function countProgramData(programId: string): Promise<WipeCounts> {
  */
 export async function wipeProgramData(programId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    // Defense in depth: same bypass used by tenant deletion
+    // (src/app/api/admin/tenants/route.ts). The append-only trigger on
+    // event_logs raises on any UPDATE/DELETE; this SET LOCAL allows the
+    // bypass-aware trigger function to skip enforcement for the current
+    // transaction. We don't intentionally touch event_logs here, but any
+    // future cascade (e.g. a new FK from event_logs) won't break the wipe.
+    await tx.$executeRawUnsafe(`SET LOCAL app.bypass_event_log_lock = 'on'`);
+
     // 1. MagicLinks reference EmailLogs (nullable FK, no cascade).
     await tx.magicLink.deleteMany({ where: { emailLog: { programId } } });
 
