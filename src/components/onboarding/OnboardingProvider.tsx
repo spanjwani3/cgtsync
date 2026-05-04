@@ -73,10 +73,38 @@ export default function OnboardingProvider({ initialState, children }: Props) {
       PROGRAM_SUBROUTE_REGEX.test(pathname ?? "") &&
       shouldFireStage("program", state, now)
     ) {
-      // Sidebar PROGRAM_NAV items are server-rendered, no data fetch wait.
-      // 400ms matches the Stage 1 delay for consistency.
-      const t = setTimeout(() => setActiveStage("program"), 400);
-      return () => clearTimeout(t);
+      // Sidebar PROGRAM_NAV items render only after the page client component
+      // calls `setCurrentProgram` post-fetch, which happens later than the
+      // first paint. Poll for the anchor before launching so Joyride doesn't
+      // hit `error:target_not_found` and auto-skip through the steps.
+      let cancelled = false;
+      const start = Date.now();
+      const TIMEOUT_MS = 6000;
+      const POLL_MS = 100;
+
+      const tryLaunch = () => {
+        if (cancelled) return;
+        const anchor = document.querySelector('[data-tour="nav-baseline"]');
+        if (anchor) {
+          setActiveStage("program");
+          return;
+        }
+        if (Date.now() - start > TIMEOUT_MS) {
+          // Anchor never appeared (program load failed, user-not-on-a-program
+          // page, etc.). Skip this stage silently rather than firing a broken
+          // tour.
+          return;
+        }
+        setTimeout(tryLaunch, POLL_MS);
+      };
+
+      // Small initial delay matches Stage 1; lets the provider mount and the
+      // sidebar's first paint complete before we start polling.
+      const initial = setTimeout(tryLaunch, 200);
+      return () => {
+        cancelled = true;
+        clearTimeout(initial);
+      };
     }
 
     setActiveStage(null);
