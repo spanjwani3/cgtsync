@@ -1,29 +1,26 @@
 /**
  * Wipe all data for a program while preserving the program shell.
  *
- * "Program shell" means: the Program row itself, its Organization, OrgMembers,
- * branding, and the IngestAddress(es) attached to the program — same baseline
- * an onboarded program would have right after `onboardTenant` finishes.
+ * Same logic as the admin UI button at /admin/tenants/[slug] →
+ * "Reset data" on a program row. Use this CLI when you don't have a
+ * browser or want to script the wipe.
  *
- * Wiped (everything else): baselines, baseline clauses, changes, invoices,
- * line items, evidences, exports, extraction jobs, commitment terms,
- * email logs, magic links tied to those email logs, reminder schedules,
- * scope analyses, scope alerts, inbound emails, program contacts, and event
- * logs scoped to this program.
+ * "Program shell" preserved: Program row, Organization, OrgMembers,
+ * branding, IngestAddress(es). Wipes everything else.
  *
  * Usage:
- *   # Dry-run (default): prints counts of what would be deleted, no changes.
+ *   # Dry-run (default): prints counts, makes no changes.
  *   npx tsx scripts/wipe-program-data.ts \
  *     --slug cellipont \
  *     --program "ERNA-101 - EDP Production of Gene-Edited iPS Cells"
  *
- *   # Apply the wipe (destructive):
+ *   # Apply (destructive, single transaction):
  *   npx tsx scripts/wipe-program-data.ts \
  *     --slug cellipont \
  *     --program "ERNA-101 - EDP Production of Gene-Edited iPS Cells" \
  *     --apply
  *
- *   # By program id (alternative):
+ *   # By program id:
  *   npx tsx scripts/wipe-program-data.ts --program-id <uuid> [--apply]
  *
  * Requires DATABASE_URL pointing at the target environment.
@@ -31,6 +28,10 @@
 
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
+import {
+  countProgramData,
+  wipeProgramData,
+} from "../src/lib/server/admin/wipeProgramData";
 
 interface Args {
   programId?: string;
@@ -99,149 +100,11 @@ async function resolveProgram(args: Args) {
   return p;
 }
 
-async function countAll(programId: string) {
-  const [
-    baselines,
-    baselineClauses,
-    changes,
-    invoices,
-    invoiceLineItems,
-    evidences,
-    exports_,
-    extractionJobs,
-    commitmentTerms,
-    emailLogs,
-    magicLinksFromEmailLogs,
-    reminderSchedules,
-    programContacts,
-    scopeAnalyses,
-    scopeAlerts,
-    inboundEmails,
-    eventLogs,
-    ingestAddresses,
-  ] = await Promise.all([
-    prisma.baseline.count({ where: { programId } }),
-    prisma.baselineClause.count({
-      where: { baseline: { programId } },
-    }),
-    prisma.change.count({ where: { programId } }),
-    prisma.invoice.count({ where: { programId } }),
-    prisma.invoiceLineItem.count({
-      where: { invoice: { programId } },
-    }),
-    prisma.evidence.count({ where: { programId } }),
-    prisma.export.count({ where: { programId } }),
-    prisma.extractionJob.count({ where: { programId } }),
-    prisma.commitmentTerm.count({ where: { programId } }),
-    prisma.emailLog.count({ where: { programId } }),
-    prisma.magicLink.count({
-      where: { emailLog: { programId } },
-    }),
-    prisma.reminderSchedule.count({ where: { programId } }),
-    prisma.programContact.count({ where: { programId } }),
-    prisma.scopeAnalysis.count({ where: { programId } }),
-    prisma.scopeAlert.count({ where: { programId } }),
-    prisma.inboundEmail.count({ where: { programId } }),
-    prisma.eventLog.count({ where: { programId } }),
-    prisma.ingestAddress.count({ where: { programId } }),
-  ]);
-
-  return {
-    baselines,
-    baselineClauses,
-    changes,
-    invoices,
-    invoiceLineItems,
-    evidences,
-    exports: exports_,
-    extractionJobs,
-    commitmentTerms,
-    emailLogs,
-    magicLinksFromEmailLogs,
-    reminderSchedules,
-    programContacts,
-    scopeAnalyses,
-    scopeAlerts,
-    inboundEmails,
-    eventLogs,
-    ingestAddresses,
-  };
-}
-
-async function applyWipe(programId: string, keepEventLogs: boolean) {
-  // One transaction so a mid-flight failure doesn't leave the program in
-  // a half-wiped state. Order matters because of cross-table FKs that
-  // aren't fully cascaded.
-  await prisma.$transaction(async (tx) => {
-    // 1. MagicLinks reference EmailLogs (nullable FK, no cascade defined).
-    //    Delete first so EmailLog deletes don't fail.
-    await tx.magicLink.deleteMany({ where: { emailLog: { programId } } });
-
-    // 2. InboundEmails reference IngestAddress + Evidence; we keep ingest
-    //    addresses, so wipe the inbound emails before evidence.
-    await tx.inboundEmail.deleteMany({ where: { programId } });
-
-    // 3. ExtractionJobs reference Evidence; wipe before evidence.
-    await tx.extractionJob.deleteMany({ where: { programId } });
-
-    // 4. ScopeAlerts (cascade from analyses, but also direct FK to program).
-    //    Reference baseline clauses + changes (nullable). Delete first.
-    await tx.scopeAlert.deleteMany({ where: { programId } });
-
-    // 5. ScopeAnalyses reference baseline + evidence.
-    await tx.scopeAnalysis.deleteMany({ where: { programId } });
-
-    // 6. CommitmentTerms reference baseline + evidence.
-    await tx.commitmentTerm.deleteMany({ where: { programId } });
-
-    // 7. ReminderSchedules reference invoices (also program FK).
-    await tx.reminderSchedule.deleteMany({ where: { programId } });
-
-    // 8. EmailLogs.
-    await tx.emailLog.deleteMany({ where: { programId } });
-
-    // 9. Exports.
-    await tx.export.deleteMany({ where: { programId } });
-
-    // 10. InvoiceLineItems cascade with invoices but reference clauses + changes.
-    //     Explicit delete keeps order obvious.
-    await tx.invoiceLineItem.deleteMany({
-      where: { invoice: { programId } },
-    });
-
-    // 11. Invoices reference evidence (nullable).
-    await tx.invoice.deleteMany({ where: { programId } });
-
-    // 12. Changes reference baselines + evidence (nullable).
-    await tx.change.deleteMany({ where: { programId } });
-
-    // 13. BaselineClauses cascade with baselines but referenced by line items
-    //     and scope alerts (already deleted). Explicit delete for clarity.
-    await tx.baselineClause.deleteMany({
-      where: { baseline: { programId } },
-    });
-
-    // 14. Baselines reference evidence (nullable).
-    await tx.baseline.deleteMany({ where: { programId } });
-
-    // 15. Evidences (no remaining references at this point).
-    await tx.evidence.deleteMany({ where: { programId } });
-
-    // 16. ProgramContacts.
-    await tx.programContact.deleteMany({ where: { programId } });
-
-    // 17. EventLogs (programId is nullable, no cascade — must be explicit).
-    if (!keepEventLogs) {
-      await tx.eventLog.deleteMany({ where: { programId } });
-    }
-  });
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const program = await resolveProgram(args);
 
-  const before = await countAll(program.id);
+  const before = await countProgramData(program.id);
   const total =
     before.baselines +
     before.baselineClauses +
@@ -300,9 +163,9 @@ async function main() {
   }
 
   console.log("APPLYING wipe…");
-  await applyWipe(program.id, args.keepEventLogs);
+  await wipeProgramData(program.id, { keepEventLogs: args.keepEventLogs });
 
-  const after = await countAll(program.id);
+  const after = await countProgramData(program.id);
   console.log("");
   console.log("After wipe (should all be 0 except ingest addresses):");
   console.log(`  baselines              : ${after.baselines}`);

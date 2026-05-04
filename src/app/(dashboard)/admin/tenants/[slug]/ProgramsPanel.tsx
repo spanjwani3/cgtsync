@@ -1,5 +1,6 @@
 import { formatCompact } from "@/lib/format";
 import type { TenantSnapshot } from "@/lib/server/admin/tenantSnapshot";
+import ResetProgramDataButton from "./ResetProgramDataButton";
 
 interface Props {
   programs: TenantSnapshot["programs"];
@@ -53,6 +54,7 @@ export default function ProgramsPanel({ programs }: Props) {
                 <th className="py-2 pr-3 text-right">Open alerts</th>
                 <th className="py-2 pr-3">Last invoice</th>
                 <th className="py-2 pr-3">Last evidence</th>
+                <th className="py-2 pr-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -106,6 +108,12 @@ export default function ProgramsPanel({ programs }: Props) {
                   </td>
                   <td className="py-2 pr-3 text-xs text-zinc-700">
                     {fmtDate(p.lastEvidenceUploadAt)}
+                  </td>
+                  <td className="py-2 pr-3 text-right">
+                    <ResetProgramDataButton
+                      programId={p.id}
+                      programName={p.name}
+                    />
                   </td>
                 </tr>
               ))}
