@@ -38,7 +38,10 @@ export async function GET(
     }
 
     const counts = await countProgramData(program.id);
-    return NextResponse.json({ requestId, program, counts });
+    const orgMemberCount = await prisma.orgMember.count({
+      where: { orgId: program.org.id },
+    });
+    return NextResponse.json({ requestId, program, counts, orgMemberCount });
   } catch (e) {
     return errorResponse(requestId, e, "GET");
   }

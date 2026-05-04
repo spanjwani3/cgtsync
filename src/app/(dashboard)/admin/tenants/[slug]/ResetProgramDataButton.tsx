@@ -34,6 +34,7 @@ export default function ResetProgramDataButton({ programId, programName }: Props
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [counts, setCounts] = useState<WipeCounts | null>(null);
+  const [orgMemberCount, setOrgMemberCount] = useState<number>(0);
   const [confirmName, setConfirmName] = useState("");
   const [keepEventLogs, setKeepEventLogs] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export default function ResetProgramDataButton({ programId, programName }: Props
         return;
       }
       setCounts(body.counts as WipeCounts);
+      setOrgMemberCount(typeof body.orgMemberCount === "number" ? body.orgMemberCount : 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load counts");
     } finally {
@@ -116,6 +118,7 @@ export default function ResetProgramDataButton({ programId, programName }: Props
               <PreviewView
                 programName={programName}
                 counts={counts}
+                orgMemberCount={orgMemberCount}
                 loading={loading}
                 error={error}
                 confirmName={confirmName}
@@ -136,6 +139,7 @@ export default function ResetProgramDataButton({ programId, programName }: Props
 function PreviewView({
   programName,
   counts,
+  orgMemberCount,
   loading,
   error,
   confirmName,
@@ -147,6 +151,7 @@ function PreviewView({
 }: {
   programName: string;
   counts: WipeCounts | null;
+  orgMemberCount: number;
   loading: boolean;
   error: string | null;
   confirmName: string;
@@ -182,8 +187,10 @@ function PreviewView({
     <>
       <h2 className="text-lg font-semibold text-zinc-900">Reset program data</h2>
       <p className="mt-1 text-sm text-zinc-700">
-        Wipes <strong>{programName}</strong>&apos;s data. Preserves the program
-        row, organization, members, branding, and ingest addresses.
+        Wipes <strong>{programName}</strong>&apos;s data — baselines, invoices,
+        evidence, scope alerts, etc.{" "}
+        <strong>All login users keep their access.</strong> The program shell,
+        organization, branding, and ingest addresses stay intact.
       </p>
 
       {loading && !counts && (
@@ -212,8 +219,10 @@ function PreviewView({
             Total rows: {total}
           </div>
           <div className="mt-1 text-zinc-500">
-            Preserved: program row, {counts.ingestAddresses} ingest address
-            {counts.ingestAddresses === 1 ? "" : "es"}, org, members, branding.
+            Preserved: program row, organization, all login users (
+            {orgMemberCount} member{orgMemberCount === 1 ? "" : "s"}), branding,{" "}
+            {counts.ingestAddresses} ingest address
+            {counts.ingestAddresses === 1 ? "" : "es"}.
           </div>
         </div>
       )}
