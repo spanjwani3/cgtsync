@@ -166,11 +166,8 @@ export async function processInboundEmail(
       metadata: { detectedType, evidenceId: evidence.id, extractionJobId: extractionJobId ?? null },
     });
 
-    // For transcripts, run scope-analysis inline. The ExtractionJob created
-    // above is the "extract candidate changes" path; analyzeScopeFromText
-    // is the path that populates /scope with ScopeAnalysis + ScopeAlerts.
-    // Without this call, transcripts arrive but /scope stays empty.
-    if (detectedType === "TRANSCRIPT" && bodyContent.trim().length > 0) {
+    const SCOPE_RELEVANT_TYPES: InboundContentType[] = ["TRANSCRIPT", "EMAIL_THREAD"];
+    if (SCOPE_RELEVANT_TYPES.includes(detectedType) && bodyContent.trim().length > 0) {
       try {
         const result = await analyzeScopeFromText(
           programId,
