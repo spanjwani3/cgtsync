@@ -338,59 +338,98 @@ export async function POST(
         createdCount++;
       }
     } else if (job.targetType === "CHANGE_EMAIL") {
-      const changeTitle = data.changeTitle as string | undefined;
-      if (!changeTitle) {
+      // Emails are now multi-candidate (matches CHANGE_TRANSCRIPT shape) so a
+      // single email body containing two distinct items produces two changes.
+      const candidates = data.candidates as Array<{
+        changeTitle?: string;
+        description?: string;
+        severity?: string;
+        estimatedImpact?: number;
+        scheduleImpactDays?: number;
+        speaker?: string;
+      }> | undefined;
+      if (!Array.isArray(candidates) || candidates.length === 0) {
         return NextResponse.json(
-          { requestId, error: "No change title found in extracted email" },
+          { requestId, error: "No candidates found in extracted email" },
           { status: 400 }
         );
       }
 
-      const severity = VALID_SEVERITIES.has(data.severity as ChangeSeverity)
-        ? (data.severity as ChangeSeverity)
-        : "MEDIUM";
+      const selectedIndices: number[] =
+        body.selectedIndices ?? candidates.map((_: unknown, i: number) => i);
+      const selected = selectedIndices
+        .filter((i: number) => i >= 0 && i < candidates.length)
+        .map((i: number) => candidates[i]);
+
+      if (selected.length === 0) {
+        return NextResponse.json(
+          { requestId, error: "No candidates selected" },
+          { status: 400 }
+        );
+      }
+
+      // Email-level context goes into each candidate's description so
+      // operators can see who proposed it without losing the per-candidate
+      // detail extracted from the body.
+      const headerParts: string[] = [];
+      if (data.sender)
+        headerParts.push(`From: ${data.sender}${data.senderRole ? ` (${data.senderRole})` : ""}`);
+      if (data.dateSent) headerParts.push(`Date: ${data.dateSent}`);
+      const header = headerParts.join("\n");
 
       const maxSeq = await prisma.change.aggregate({
         where: { programId },
         _max: { sequenceNum: true },
       });
-      const sequenceNum = (maxSeq._max.sequenceNum ?? 0) + 1;
+      let sequenceNum = (maxSeq._max.sequenceNum ?? 0) + 1;
 
-      // Build description with email context
-      const parts: string[] = [];
-      if (data.sender) parts.push(`From: ${data.sender}${data.senderRole ? ` (${data.senderRole})` : ""}`);
-      if (data.dateSent) parts.push(`Date: ${data.dateSent}`);
-      if (data.description) parts.push(String(data.description));
-      const description = parts.join("\n") || null;
+      for (const c of selected) {
+        if (!c.changeTitle) continue;
+        const severity = VALID_SEVERITIES.has(c.severity as ChangeSeverity)
+          ? (c.severity as ChangeSeverity)
+          : "MEDIUM";
 
-      const createData: Record<string, unknown> = {
-        programId,
-        sequenceNum,
-        title: changeTitle,
-        description,
-        severity,
-        estimatedImpact: data.estimatedImpact != null ? Number(data.estimatedImpact) : null,
-        evidenceFileId: job.evidenceId,
-      };
-      if (extended && data.scheduleImpactDays != null) {
-        createData.scheduleImpactDays = Number(data.scheduleImpactDays);
+        const descParts: string[] = [];
+        if (header) descParts.push(header);
+        if (c.description) descParts.push(c.description);
+        else if (c.speaker) descParts.push(`Raised by ${c.speaker}`);
+        const description = descParts.join("\n") || null;
+
+        const createData: Record<string, unknown> = {
+          programId,
+          sequenceNum: sequenceNum++,
+          title: c.changeTitle,
+          description,
+          severity,
+          estimatedImpact: c.estimatedImpact != null ? Number(c.estimatedImpact) : null,
+          evidenceFileId: job.evidenceId,
+        };
+        if (extended && c.scheduleImpactDays != null) {
+          createData.scheduleImpactDays = Number(c.scheduleImpactDays);
+        }
+
+        const change = await prisma.change.create({
+          data: createData as any,
+          select: changeSelect,
+        });
+
+        await logEvent({
+          programId,
+          userId,
+          action: "CHANGE_DRAFTED",
+          entityType: "Change",
+          entityId: change.id,
+          metadata: {
+            sequenceNum: change.sequenceNum,
+            title: c.changeTitle,
+            fromExtraction: true,
+            jobId,
+            source: "email",
+          },
+          ipAddress: getClientIp(req.headers),
+        });
+        createdCount++;
       }
-
-      const change = await prisma.change.create({
-        data: createData as any,
-        select: changeSelect,
-      });
-
-      await logEvent({
-        programId,
-        userId,
-        action: "CHANGE_DRAFTED",
-        entityType: "Change",
-        entityId: change.id,
-        metadata: { sequenceNum, title: changeTitle, fromExtraction: true, jobId, source: "email" },
-        ipAddress: getClientIp(req.headers),
-      });
-      createdCount = 1;
     } else if (job.targetType === "TERMS") {
       const terms = data.terms as Array<{
         termType?: string;

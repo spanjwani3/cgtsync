@@ -471,22 +471,16 @@ export async function POST(req: NextRequest) {
 
       const data = result.extractedData as Record<string, unknown>;
       let candidates: CandidateInput[] = [];
-      if (target === "CHANGE_TRANSCRIPT" && Array.isArray(data?.candidates)) {
+      if (
+        (target === "CHANGE_TRANSCRIPT" || target === "CHANGE_EMAIL") &&
+        Array.isArray(data?.candidates)
+      ) {
         candidates = (data.candidates as Array<Record<string, unknown>>).map((c) => ({
           changeTitle: String(c.changeTitle ?? ""),
           description: (c.description as string | null | undefined) ?? null,
           severity: (c.severity as string | null | undefined) ?? null,
           estimatedImpact: (c.estimatedImpact as number | null | undefined) ?? null,
         }));
-      } else if (target === "CHANGE_EMAIL") {
-        candidates = [
-          {
-            changeTitle: String(data?.changeTitle ?? ""),
-            description: (data?.description as string | null | undefined) ?? null,
-            severity: (data?.severity as string | null | undefined) ?? null,
-            estimatedImpact: (data?.estimatedImpact as number | null | undefined) ?? null,
-          },
-        ];
       }
       candidates = candidates.filter((c) => c.changeTitle && c.changeTitle.length > 0);
       if (candidates.length) {
