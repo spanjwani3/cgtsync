@@ -35,6 +35,7 @@ export interface ReconciliationClause {
   isOptional: boolean;
   scopeTier: string | null;
   type: string;
+  unit?: string | null;
 }
 
 export type ReconciliationStatus = "MATCH" | "MINOR_DRIFT" | "MISMATCH";
@@ -96,6 +97,23 @@ export function selectPrimaryStatedTotal(totals: StatedTotal[]): StatedTotal[] {
   return totals.map((t, i) => ({ ...t, isPrimary: i === primaryIdx }));
 }
 
+/**
+ * Decide whether a PRICING clause's unit represents a dollar amount that
+ * should contribute to a sum. We include the line if its unit is empty or
+ * looks like a USD-denominated unit ("USD", "USD/run", "USD/month", "$/kg",
+ * etc.). We skip non-monetary units (most importantly "%", which a markup
+ * line carries with a face value like 15 — summing that as $15 silently
+ * skews totals).
+ */
+function isMonetaryUnit(unit: string | null | undefined): boolean {
+  if (unit == null) return true;
+  const trimmed = unit.trim();
+  if (trimmed === "") return true;
+  if (trimmed.includes("$")) return true;
+  if (/usd/i.test(trimmed)) return true;
+  return false;
+}
+
 function sumPricing(
   clauses: ReconciliationClause[],
   scopeTier: string | null,
@@ -106,9 +124,20 @@ function sumPricing(
     if (c.type !== "PRICING") continue;
     if (scopeTier !== null && c.scopeTier !== scopeTier) continue;
     if (c.value == null) continue;
+    if (!isMonetaryUnit(c.unit ?? null)) continue;
     sum += c.value * (c.quantity ?? 1);
   }
   return sum;
+}
+
+/**
+ * Total contracted value of a baseline: sum of (value × quantity) over all
+ * non-optional, monetary-unit PRICING clauses. This is the headline number
+ * shown to users — kept in this module so the baseline review, the confirm
+ * page, the impact summary, and any future surface all agree on the math.
+ */
+export function computeContractedTotal(clauses: ReconciliationClause[]): number {
+  return sumPricing(clauses, null);
 }
 
 function classifyDelta(delta: number, stated: number): ReconciliationStatus {
