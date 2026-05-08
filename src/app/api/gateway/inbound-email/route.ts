@@ -238,6 +238,54 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Upload each attachment as its own Evidence row, linked back to this
+    // InboundEmail via metadata.inboundEmailId. processInboundEmail
+    // discovers them via that link and runs scope analysis on each.
+    const ts = Date.now();
+    const attachments = payload.Attachments ?? [];
+    for (let i = 0; i < attachments.length; i++) {
+      const att = attachments[i];
+      try {
+        const buffer = Buffer.from(att.Content, "base64");
+        const fileName = safeFileName(att.Name);
+        const storageKey = `${program.id}/ingest/${ts}-att-${i}-${fileName}`;
+        const uploaded = await uploadEvidence(buffer, storageKey, att.ContentType);
+        await prisma.evidence.create({
+          data: {
+            programId: program.id,
+            type: "OTHER",
+            fileName,
+            fileSize: uploaded.fileSize,
+            mimeType: att.ContentType,
+            storagePath: uploaded.storagePath,
+            sha256Hash: uploaded.sha256Hash,
+            inboundMessageId: `${payload.MessageID}#att-${i}`,
+            metadata: {
+              source: "EMAIL_INGEST",
+              inboundEmailId: inboundEmail.id,
+              attachment: att.Name,
+              fromEmail,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "attachment upload failed";
+        await prisma.eventLog.create({
+          data: {
+            programId: program.id,
+            action: "INGEST_EMAIL_FAILED",
+            entityType: "InboundEmail",
+            entityId: inboundEmail.id,
+            metadata: {
+              stage: "attachment_upload",
+              error: msg,
+              attachment: att.Name,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+
     const { processInboundEmail } = await import("@/lib/server/inbound-email");
     try {
       const result = await processInboundEmail(inboundEmail.id);

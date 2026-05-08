@@ -10,6 +10,10 @@ import { logEvent } from "@/lib/server/event-log";
 import { classifyInboundContent, mapToExtractionTarget } from "@/lib/server/ingest-classifier";
 import type { InboundContentType } from "@/lib/server/ingest-classifier";
 import { analyzeScopeFromText } from "@/lib/server/scope-analysis";
+import {
+  extractTextForScope,
+  isScopeEligibleMime,
+} from "@/lib/server/extract-text-for-scope";
 
 // ─── Ingest address generation ───────────────────────────────
 
@@ -31,6 +35,68 @@ export interface ProcessResult {
   extractionJobId?: string;
 }
 
+type AttachmentEvidence = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  storagePath: string;
+};
+
+/**
+ * For each scope-eligible attachment Evidence row, extract its text and
+ * run scope analysis. Failures per attachment are logged as recoverable
+ * INGEST_EMAIL_FAILED events but do not abort the rest of the loop or
+ * the parent inbound-email pipeline.
+ */
+async function runAttachmentScopeAnalysis(
+  programId: string,
+  inboundEmailId: string,
+  attachments: AttachmentEvidence[],
+): Promise<void> {
+  for (const att of attachments) {
+    if (!isScopeEligibleMime(att.mimeType)) continue;
+    try {
+      const text = await extractTextForScope(att.storagePath, att.mimeType);
+      if (text.trim().length === 0) continue;
+      const result = await analyzeScopeFromText(
+        programId,
+        text,
+        "EMAIL_INGEST_ATTACHMENT",
+        att.id,
+      );
+      await logEvent({
+        programId,
+        action: "SCOPE_ANALYSIS_COMPLETED",
+        entityType: "ScopeAnalysis",
+        entityId: result.analysisId,
+        metadata: {
+          inboundEmailId,
+          evidenceId: att.id,
+          attachmentName: att.fileName,
+          alertCount: result.alertCount,
+          source: "EMAIL_INGEST_ATTACHMENT",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "attachment scope analysis failed";
+      await logEvent({
+        programId,
+        action: "INGEST_EMAIL_FAILED",
+        entityType: "InboundEmail",
+        entityId: inboundEmailId,
+        metadata: {
+          stage: "attachment_scope_analysis",
+          error: msg,
+          evidenceId: att.id,
+          attachmentName: att.fileName,
+          recoverable:
+            msg.startsWith("UNSUPPORTED_MIME") || msg === "NO_LOCKED_BASELINE",
+        },
+      });
+    }
+  }
+}
+
 export async function processInboundEmail(
   inboundEmailId: string,
 ): Promise<ProcessResult> {
@@ -48,10 +114,25 @@ export async function processInboundEmail(
       data: { status: "PROCESSING" },
     });
 
-    // Classify the content
+    // Attachments were already created as Evidence rows by the inbound
+    // webhook and tagged with metadata.inboundEmailId. Pull them now so
+    // (a) we can hint the classifier with their filenames and (b) we can
+    // run scope analysis on each one even if the body alone is unclassifiable.
+    const attachmentEvidence = await prisma.evidence.findMany({
+      where: {
+        programId,
+        AND: [
+          { metadata: { path: ["source"], equals: "EMAIL_INGEST" } },
+          { metadata: { path: ["inboundEmailId"], equals: inboundEmailId } },
+        ],
+      },
+    });
+
+    // Classify the content (filenames help when the body is just "see attached")
     const { type: detectedType, confidence } = await classifyInboundContent(
       email.subject ?? "",
       email.textBody ?? "",
+      attachmentEvidence.map((a) => a.fileName),
     );
 
     // Update detected type
@@ -60,7 +141,14 @@ export async function processInboundEmail(
       data: { detectedType },
     });
 
-    // If UNKNOWN or low confidence, mark as NEEDS_REVIEW
+    // Run scope analysis on supported attachments regardless of body
+    // classification — a "FYI see attached" cover email with a signed
+    // change-order PDF should still produce ScopeAlerts even though the
+    // body itself is UNKNOWN.
+    await runAttachmentScopeAnalysis(programId, inboundEmailId, attachmentEvidence);
+
+    // If body is UNKNOWN or low confidence, mark as NEEDS_REVIEW for the
+    // body's purposes. Attachments were already processed above.
     if (detectedType === "UNKNOWN" || confidence < 0.5) {
       await prisma.inboundEmail.update({
         where: { id: inboundEmailId },
@@ -72,7 +160,12 @@ export async function processInboundEmail(
         action: "INGEST_EMAIL_RECEIVED",
         entityType: "InboundEmail",
         entityId: inboundEmailId,
-        metadata: { detectedType, confidence, status: "NEEDS_REVIEW" },
+        metadata: {
+          detectedType,
+          confidence,
+          status: "NEEDS_REVIEW",
+          attachmentCount: attachmentEvidence.length,
+        },
       });
 
       return { inboundEmailId, status: "NEEDS_REVIEW", detectedType };
