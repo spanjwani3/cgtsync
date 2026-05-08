@@ -309,6 +309,55 @@ describe("reconcileBaseline", () => {
     expect(r.primary?.status).toBe("MATCH");
   });
 
+  it("excludes the negative discount line when a stated total is marked excludesDiscounts", () => {
+    // Pre-discount "Total Estimated Price" should reconcile against positive
+    // PRICING only, not the discount-aware sum.
+    const r = reconcileBaseline(
+      [
+        { value: 3_020_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD" },
+        { value: -200_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD" },
+      ],
+      [
+        total("Total Estimated Price", 3_020_000, { excludesDiscounts: true }),
+        total("Total Estimated Price after Discount", 2_820_000, { isPrimary: true }),
+      ],
+    );
+    expect(r.primary?.label).toBe("Total Estimated Price after Discount");
+    expect(r.primary?.computedValue).toBe(2_820_000);
+    expect(r.primary?.status).toBe("MATCH");
+
+    const preDiscount = r.secondary.find((s) => s.label === "Total Estimated Price");
+    expect(preDiscount?.computedValue).toBe(3_020_000);
+    expect(preDiscount?.status).toBe("MATCH");
+  });
+
+  it("attributes a Tech-Transfer-scoped discount correctly under excludesDiscounts", () => {
+    // The Ernexa Executive Discount is described as applying to a Tech
+    // Transfer item (DS Engineering Run #1 Suite Fee). The LLM should put
+    // scopeTier="Tech Transfer" on the discount, and the pre-discount Tech
+    // Transfer subtotal should match by ignoring it.
+    const r = reconcileBaseline(
+      [
+        { value: 2_484_200, quantity: 1, type: "PRICING", isOptional: false, scopeTier: "Tech Transfer", unit: "USD" },
+        { value: -200_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: "Tech Transfer", unit: "USD" },
+        { value: 535_800, quantity: 1, type: "PRICING", isOptional: false, scopeTier: "GMP Run #1", unit: "USD" },
+      ],
+      [
+        total("Total Estimated Tech Transfer Price", 2_484_200, {
+          scopeTier: "Tech Transfer",
+          excludesDiscounts: true,
+        }),
+        total("Total Estimated Tech Transfer Price after Discount", 2_284_200, {
+          scopeTier: "Tech Transfer",
+        }),
+        total("Total Estimated Price after Discount", 2_820_000, { isPrimary: true }),
+      ],
+    );
+    expect(r.primary?.computedValue).toBe(2_820_000);
+    expect(r.primary?.status).toBe("MATCH");
+    expect(r.secondary.every((s) => s.status === "MATCH")).toBe(true);
+  });
+
   it("simulates the Ernexa SOW end-to-end", () => {
     // 5.2 DS Engineering Run: $169,100/run × 2 runs       = $338,200
     // 5.3 DP Engineering Run: $82,300/run  × 2 runs       = $164,600

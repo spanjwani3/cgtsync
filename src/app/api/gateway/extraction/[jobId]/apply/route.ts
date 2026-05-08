@@ -144,6 +144,7 @@ export async function POST(
             value: Number(t.value),
             scopeTier: typeof t.scopeTier === "string" ? t.scopeTier : null,
             isPrimary: t.isPrimary === true,
+            excludesDiscounts: t.excludesDiscounts === true,
             excerpt: typeof t.excerpt === "string" ? t.excerpt : undefined,
             page: typeof t.page === "number" ? t.page : null,
             confidence: typeof t.confidence === "number" ? t.confidence : undefined,

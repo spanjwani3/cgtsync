@@ -24,6 +24,14 @@ export interface StatedTotal {
   value: number;
   scopeTier?: string | null;
   isPrimary?: boolean | null;
+  /**
+   * True when this stated total represents a *pre-discount* number — e.g.,
+   * "Total Estimated Price" before the executive discount is applied.
+   * The reconciler then sums only positive PRICING when checking it, so a
+   * negative-value discount clause doesn't drag the computed value below
+   * the stated.
+   */
+  excludesDiscounts?: boolean | null;
   excerpt?: string;
   page?: number | null;
   confidence?: number;
@@ -117,6 +125,7 @@ function isMonetaryUnit(unit: string | null | undefined): boolean {
 function sumPricing(
   clauses: ReconciliationClause[],
   scopeTier: string | null,
+  options: { excludeNegative?: boolean } = {},
 ): number {
   let sum = 0;
   for (const c of clauses) {
@@ -125,6 +134,7 @@ function sumPricing(
     if (scopeTier !== null && c.scopeTier !== scopeTier) continue;
     if (c.value == null) continue;
     if (!isMonetaryUnit(c.unit ?? null)) continue;
+    if (options.excludeNegative && c.value < 0) continue;
     sum += c.value * (c.quantity ?? 1);
   }
   return sum;
@@ -199,7 +209,9 @@ export function reconcileBaseline(
 
   const buildLine = (t: StatedTotal): ReconciliationLine => {
     const tier = t.scopeTier ?? null;
-    const computed = sumPricing(clauses, tier);
+    const computed = sumPricing(clauses, tier, {
+      excludeNegative: t.excludesDiscounts === true,
+    });
     const delta = computed - t.value;
     return {
       label: t.label,
