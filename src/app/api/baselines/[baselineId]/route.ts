@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { OrgRole, BaselineStatus } from "@/generated/prisma/client";
 import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
+import {
+  reconcileBaseline,
+  type StatedTotal,
+  type ReconciliationClause,
+} from "@/lib/server/baselineReconciliation";
 
 export async function GET(
   req: NextRequest,
@@ -16,7 +21,18 @@ export async function GET(
     });
     if (!baseline) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await requireProgramAccess(baseline.programId);
-    return NextResponse.json(baseline);
+
+    const reconClauses: ReconciliationClause[] = baseline.clauses.map((c) => ({
+      value: c.value == null ? null : Number(c.value),
+      quantity: Number(c.quantity ?? 1),
+      isOptional: c.isOptional,
+      scopeTier: c.scopeTier,
+      type: c.type,
+    }));
+    const statedTotals = (baseline.statedTotals as StatedTotal[] | null) ?? null;
+    const reconciliation = reconcileBaseline(reconClauses, statedTotals);
+
+    return NextResponse.json({ ...baseline, reconciliation });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

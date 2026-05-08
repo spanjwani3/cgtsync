@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "npx prisma generate && npx tsx scripts/generate-table-map.ts",
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",
@@ -48,6 +50,7 @@
     "prisma": "^7.4.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.5"
   }
 }

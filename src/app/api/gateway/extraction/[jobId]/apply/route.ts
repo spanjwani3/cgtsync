@@ -5,6 +5,7 @@ import { requireProgramAccess } from "@/lib/server/auth";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { generateRequestId, structuredError } from "@/lib/config";
 import { hasChangeExtendedColumns, CHANGE_BASE_SELECT, CHANGE_EXTENDED_SELECT } from "@/lib/server/change-compat";
+import { selectPrimaryStatedTotal, type StatedTotal } from "@/lib/server/baselineReconciliation";
 
 const VALID_CLAUSE_TYPES = new Set(Object.values(ClauseType));
 const VALID_SEVERITIES = new Set(Object.values(ChangeSeverity));
@@ -86,6 +87,9 @@ export async function POST(
         description?: string;
         value?: number;
         unit?: string;
+        quantity?: number | null;
+        isOptional?: boolean | null;
+        scopeTier?: string | null;
       }>;
       if (!Array.isArray(clauses) || clauses.length === 0) {
         return NextResponse.json(
@@ -106,6 +110,10 @@ export async function POST(
           ? (c.type as ClauseType)
           : "OTHER";
 
+        const rawQty = c.quantity;
+        const quantity =
+          typeof rawQty === "number" && rawQty > 0 ? rawQty : 1;
+
         await prisma.baselineClause.create({
           data: {
             baselineId,
@@ -115,10 +123,36 @@ export async function POST(
             description: c.description ?? null,
             value: c.value ?? null,
             unit: c.unit ?? null,
+            quantity,
+            isOptional: c.isOptional === true,
+            scopeTier: c.scopeTier ?? null,
             sortOrder: sortOrder++,
           },
         });
         createdCount++;
+      }
+
+      // Persist statedTotals on the baseline. Re-runs overwrite — there's
+      // only one canonical set of stated totals per source document.
+      const rawTotals = data.statedTotals;
+      if (Array.isArray(rawTotals) && rawTotals.length > 0) {
+        const sanitized: StatedTotal[] = rawTotals
+          .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
+          .filter((t) => typeof t.label === "string" && typeof t.value === "number")
+          .map((t) => ({
+            label: String(t.label),
+            value: Number(t.value),
+            scopeTier: typeof t.scopeTier === "string" ? t.scopeTier : null,
+            isPrimary: t.isPrimary === true,
+            excerpt: typeof t.excerpt === "string" ? t.excerpt : undefined,
+            page: typeof t.page === "number" ? t.page : null,
+            confidence: typeof t.confidence === "number" ? t.confidence : undefined,
+          }));
+        const normalized = selectPrimaryStatedTotal(sanitized);
+        await prisma.baseline.update({
+          where: { id: baselineId },
+          data: { statedTotals: normalized as unknown as Prisma.InputJsonValue },
+        });
       }
     } else if (job.targetType === "INVOICE") {
       const { invoiceId } = body;

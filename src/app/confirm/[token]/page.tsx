@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
+import ReconciliationBanner from "@/components/baseline/ReconciliationBanner";
+import type { ReconciliationResult } from "@/lib/server/baselineReconciliation";
 
 interface LinkData {
   id: string;
@@ -75,6 +77,7 @@ export default function ConfirmPage() {
   const { token } = useParams<{ token: string }>();
   const [link, setLink] = useState<LinkData | null>(null);
   const [entity, setEntity] = useState<Record<string, unknown> | null>(null);
+  const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null);
   const [sentBy, setSentBy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
@@ -107,6 +110,7 @@ export default function ConfirmPage() {
           const data = await res.json();
           setLink(data.link);
           setEntity(data.entity);
+          setReconciliation((data.reconciliation as ReconciliationResult | null) ?? null);
           setSentBy(data.sentBy ?? null);
           if (data.link?.confirmedAt) setConfirmed(true);
         } else if (res.status === 404) {
@@ -381,9 +385,18 @@ export default function ConfirmPage() {
               </div>
             </div>
 
-            {/* Total value summary */}
+            {/* Total value summary — quantity-aware, excludes Optional items
+                so contracted-scope total matches the SOW's signed value. */}
             {(() => {
-              const totalValue = clauses.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
+              const totalValue = clauses
+                .filter((c) => c.isOptional !== true)
+                .reduce(
+                  (sum, c) =>
+                    sum +
+                    (Number(c.value) || 0) *
+                      (Number((c as Record<string, unknown>).quantity) || 1),
+                  0,
+                );
               if (totalValue <= 0) return null;
               return (
                 <div className="card bg-zinc-50 text-center py-3">
@@ -394,6 +407,10 @@ export default function ConfirmPage() {
                 </div>
               );
             })()}
+
+            {/* Reconciliation banner mirrors the dashboard view so the
+                counterparty sees the same green/amber signal. */}
+            {reconciliation && <ReconciliationBanner reconciliation={reconciliation} />}
 
             {/* Summary counts + grouped clause cards */}
             {(() => {
@@ -430,36 +447,65 @@ export default function ConfirmPage() {
                     <div key={group.label}>
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">{group.label}</h3>
                       <div className="space-y-2">
-                        {group.items.map((c, i) => (
-                          <div key={i} className="card p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className={`inline-flex rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${TYPE_COLORS[c.type as string] ?? TYPE_COLORS.OTHER}`}>
-                                    {c.type as string}
-                                  </span>
-                                  {c.clauseRef != null && (
-                                    <span className="font-mono text-[10px] text-muted">#{c.clauseRef as string}</span>
+                        {group.items.map((c, i) => {
+                          const qty = Number((c as Record<string, unknown>).quantity) || 1;
+                          const valueNum = c.value != null ? Number(c.value) : null;
+                          const showMultiplier = valueNum != null && qty > 1;
+                          const lineTotal = valueNum != null ? valueNum * qty : null;
+                          const isOptional = (c as Record<string, unknown>).isOptional === true;
+                          const scopeTier = (c as Record<string, unknown>).scopeTier as string | null | undefined;
+                          return (
+                            <div key={i} className={`card p-3 ${isOptional ? "bg-zinc-50/60 opacity-75" : ""}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`inline-flex rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${TYPE_COLORS[c.type as string] ?? TYPE_COLORS.OTHER}`}>
+                                      {c.type as string}
+                                    </span>
+                                    {c.clauseRef != null && (
+                                      <span className="font-mono text-[10px] text-muted">#{c.clauseRef as string}</span>
+                                    )}
+                                    {isOptional && (
+                                      <span className="inline-flex rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-zinc-600">
+                                        Optional
+                                      </span>
+                                    )}
+                                    {scopeTier && (
+                                      <span className="inline-flex rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                        {scopeTier}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="mt-1 text-sm font-medium text-foreground">{c.title as string}</h4>
+                                  {c.description != null && (
+                                    <p className="mt-0.5 text-xs text-muted line-clamp-2">{c.description as string}</p>
                                   )}
                                 </div>
-                                <h4 className="mt-1 text-sm font-medium text-foreground">{c.title as string}</h4>
-                                {c.description != null && (
-                                  <p className="mt-0.5 text-xs text-muted line-clamp-2">{c.description as string}</p>
+                                {valueNum != null && (
+                                  <div className="flex-shrink-0 text-right">
+                                    {showMultiplier ? (
+                                      <>
+                                        <p className="text-xs text-muted">
+                                          {qty} × {valueNum.toLocaleString()}
+                                        </p>
+                                        <p className="text-sm font-bold text-foreground">
+                                          {lineTotal != null ? lineTotal.toLocaleString() : ""}
+                                        </p>
+                                      </>
+                                    ) : (
+                                      <p className="text-sm font-bold text-foreground">
+                                        {valueNum.toLocaleString()}
+                                      </p>
+                                    )}
+                                    {c.unit != null && (
+                                      <p className="text-[10px] text-muted">{c.unit as string}</p>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                              {c.value != null && (
-                                <div className="flex-shrink-0 text-right">
-                                  <p className="text-sm font-bold text-foreground">
-                                    {Number(c.value).toLocaleString()}
-                                  </p>
-                                  {c.unit != null && (
-                                    <p className="text-[10px] text-muted">{c.unit as string}</p>
-                                  )}
-                                </div>
-                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}

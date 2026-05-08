@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { validateMagicLink, recordMagicLinkView, confirmMagicLink } from "@/lib/server/magic-link";
 import { logEvent, getClientIp } from "@/lib/server/event-log";
 import { CHANGE_EXTENDED_SELECT, hasChangeExtendedColumns } from "@/lib/server/change-compat";
+import {
+  reconcileBaseline,
+  type StatedTotal,
+  type ReconciliationClause,
+  type ReconciliationResult,
+} from "@/lib/server/baselineReconciliation";
 
 export async function GET(
   req: NextRequest,
@@ -19,17 +25,30 @@ export async function GET(
     );
 
     // Return the entity data based on scope
-    let entity = null;
+    let entity: Record<string, unknown> | null = null;
+    let reconciliation: ReconciliationResult | null = null;
     if (link.scope === "BASELINE_CONFIRM") {
-      entity = await prisma.baseline.findUnique({
+      const baseline = await prisma.baseline.findUnique({
         where: { id: link.entityId },
         select: {
           id: true, title: true, version: true, status: true, programId: true,
-          releasedAt: true, confirmedAt: true,
+          releasedAt: true, confirmedAt: true, statedTotals: true,
           clauses: { orderBy: { sortOrder: "asc" } },
           program: { select: { name: true, cdmoName: true } },
         },
       });
+      if (baseline) {
+        const reconClauses: ReconciliationClause[] = baseline.clauses.map((c) => ({
+          value: c.value == null ? null : Number(c.value),
+          quantity: Number(c.quantity ?? 1),
+          isOptional: c.isOptional,
+          scopeTier: c.scopeTier,
+          type: c.type,
+        }));
+        const statedTotals = (baseline.statedTotals as StatedTotal[] | null) ?? null;
+        reconciliation = reconcileBaseline(reconClauses, statedTotals);
+      }
+      entity = baseline as unknown as Record<string, unknown> | null;
     } else if (link.scope === "CHANGE_CONFIRM") {
       entity = await prisma.change.findUnique({
         where: { id: link.entityId },
@@ -46,6 +65,7 @@ export async function GET(
     return NextResponse.json({
       link: { id: link.id, scope: link.scope, expiresAt: link.expiresAt, singleUse: link.singleUse, confirmedAt: link.confirmedAt },
       entity,
+      reconciliation,
       sentBy: sender?.email ?? null,
     });
   } catch (e) {
