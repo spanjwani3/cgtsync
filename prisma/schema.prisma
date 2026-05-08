@@ -372,6 +372,7 @@ model Baseline {
   lockedAt     DateTime?      @map("locked_at")
   supersededAt     DateTime?      @map("superseded_at")
   counterpartyNote String?        @map("counterparty_note")
+  statedTotals     Json?          @map("stated_totals")
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
@@ -395,6 +396,9 @@ model BaselineClause {
   description String?
   value       Decimal?   @db.Decimal(14, 2)
   unit        String?
+  quantity    Decimal    @default(1) @db.Decimal(14, 4)
+  isOptional  Boolean    @default(false) @map("is_optional")
+  scopeTier   String?    @map("scope_tier")
   sortOrder   Int        @default(0) @map("sort_order")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")

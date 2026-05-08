@@ -46,6 +46,19 @@ const BaselineClauseRow = z.object({
   description: z.string().nullable().optional(),
   value: z.number().nullable().optional(),
   unit: z.string().nullable().optional(),
+  quantity: z.number().positive().nullable().optional().default(1),
+  isOptional: z.boolean().nullable().optional().default(false),
+  scopeTier: z.string().nullable().optional(),
+  excerpt: z.string().min(1),
+  page: z.number().int().positive().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+const StatedTotalRow = z.object({
+  label: z.string().min(1),
+  value: z.number(),
+  scopeTier: z.string().nullable().optional(),
+  isPrimary: z.boolean().nullable().optional().default(false),
   excerpt: z.string().min(1),
   page: z.number().int().positive().nullable().optional(),
   confidence: z.number().min(0).max(1),
@@ -56,6 +69,7 @@ export const BaselineExtractionSchema = z.object({
   documentDate: z.string().nullable().optional(),
   parties: z.array(z.string()).optional().default([]),
   clauses: z.array(BaselineClauseRow).min(1),
+  statedTotals: z.array(StatedTotalRow).optional().default([]),
   summary: z.string().nullable().optional(),
 });
 
@@ -229,6 +243,9 @@ For each item, provide:
 - description: Full text or summary of the clause
 - value: Numeric value — REQUIRED for PRICING, TIMELINE, and PAYMENT_TERMS. Extract the primary dollar amount, duration, or numeric term. Use null ONLY if the clause is purely descriptive with no numbers at all.
 - unit: Unit for the value (e.g., "USD", "USD/batch", "USD/kg", "days", "weeks", "kg"). REQUIRED whenever value is set.
+- quantity: How many times this line is included in the contracted total. Default 1. See "Quantity from footnotes" below.
+- isOptional: true if the line is explicitly excluded from the contracted total. See "Optional items" below.
+- scopeTier: The named phase/tier this line belongs to (e.g., "Tech Transfer", "GMP Manufacturing"), or null. See "Scope tier" below.
 ${PROVENANCE_INSTRUCTION}
 
 CRITICAL — Value Extraction Rules:
@@ -240,6 +257,32 @@ CRITICAL — Value Extraction Rules:
 - Do NOT leave value as null if any numeric figure appears in the clause text
 - Extract EVERY pricing line, payment term, and timeline clause as separate items — do NOT combine multiple items into one clause
 
+CRITICAL — Quantity from footnotes & scope statements:
+- Pricing tables in SOWs often list a unit price ("$169,100 per DS Engineering Run") and specify a quantity in a footnote, parenthetical, scope summary, or adjacent column ("Two (2) DS Engineering Runs", "Nine (9) Months of PM Monthly Fees", "Three (3) APS Runs").
+- For each pricing line, set "quantity" to the multiplier stated in the document. If no quantity is stated, set quantity: 1.
+- The line's contribution to a total = value × quantity. Quantity must be an exact match to the number in the document — do NOT split the unit price across multiple clauses.
+- Example: "DS Engineering Run: $169,100/run" with footnote "Estimated price includes Two (2) DS Engineering Runs" → value: 169100, unit: "USD/run", quantity: 2.
+
+CRITICAL — Optional items:
+- Mark "isOptional": true for any item explicitly described as optional, contingent, "if requested", "as needed", or excluded from the contracted total. Look for markers like "(Optional)", "Not included in Pricing & Timeline", "Optional – Not included", "if requested by Client".
+- Otherwise set isOptional: false. When in doubt, prefer false — under-marking optional is safer than over-marking, since over-marking hides real billable work.
+
+CRITICAL — Discounts as negative PRICING clauses:
+- Executive discounts, volume discounts, credits, rebates, and any negative line items must be extracted as a PRICING clause with "value" as a NEGATIVE number.
+- Example: "Executive Discount: −$200,000" → value: -200000, unit: "USD", quantity: 1, type: "PRICING".
+- This is required so that reconciliation against after-discount stated totals sums correctly. Do NOT skip discount lines.
+
+Scope tier:
+- If the SOW separates work into named phases or scope tiers (e.g., "Tech Transfer" subtotal vs. "GMP Manufacturing" subtotal vs. an after-discount grand total), set "scopeTier" on each line to the tier name it belongs to. Footnotes commonly indicate this ("Estimated Tech Transfer Price includes: Two (2) DS Engineering Runs..." → scopeTier: "Tech Transfer" on those lines).
+- The grand total typically has no scopeTier (covers all lines). If the document is single-tier, leave scopeTier: null on all lines.
+
+CRITICAL — Stated totals (top-level reconciliation targets):
+- Find every grand total, subtotal, phase total, after-discount total, and signed contract value stated in the document — in pricing tables, footers, signature blocks, or summary sections.
+- Return them in a top-level "statedTotals" array. Each entry: { label, value, scopeTier?, isPrimary?, excerpt, page, confidence }.
+- Examples of labels: "Total Estimated Tech Transfer Price", "Total Estimated Price", "Total Estimated Price after Discount", "Grand Total".
+- Set "isPrimary": true on EXACTLY ONE entry — the signed contract value. This is typically the after-discount total or the final/grand total. If only one total exists, mark it primary. If multiple totals exist, the after-discount or final-signed total wins.
+- Set scopeTier on a stated total when it covers a named phase (e.g., "Total Estimated Tech Transfer Price" → scopeTier: "Tech Transfer"). The grand total has no scopeTier.
+
 Return a JSON object with this exact structure:
 {
   "documentTitle": "Title of the document",
@@ -247,26 +290,32 @@ Return a JSON object with this exact structure:
   "parties": ["Party A name", "Party B name"],
   "clauses": [
     {
-      "clauseRef": "3.1",
+      "clauseRef": "5.2",
       "type": "PRICING",
-      "title": "Manufacturing batch cost",
-      "description": "The cost for API manufacturing is $285,000 per batch",
-      "value": 285000,
-      "unit": "USD/batch",
-      "excerpt": "verbatim quote from document...",
-      "page": 3,
-      "confidence": 0.95
+      "title": "DS Engineering Run",
+      "description": "DS Engineering Run at $169,100 per run; footnote specifies two runs included in Tech Transfer scope",
+      "value": 169100,
+      "unit": "USD/run",
+      "quantity": 2,
+      "isOptional": false,
+      "scopeTier": "Tech Transfer",
+      "excerpt": "verbatim quote including footnote...",
+      "page": 4,
+      "confidence": 0.93
     },
     {
-      "clauseRef": "3.2",
+      "clauseRef": "Discount",
       "type": "PRICING",
-      "title": "Quality control testing cost",
-      "description": "QC testing is charged at $45,000 per batch",
-      "value": 45000,
-      "unit": "USD/batch",
-      "excerpt": "verbatim quote from document...",
-      "page": 3,
-      "confidence": 0.92
+      "title": "Executive Discount",
+      "description": "Executive discount of $200,000 applied to total estimated price",
+      "value": -200000,
+      "unit": "USD",
+      "quantity": 1,
+      "isOptional": false,
+      "scopeTier": null,
+      "excerpt": "Executive Discount: ($200,000)",
+      "page": 5,
+      "confidence": 0.97
     },
     {
       "clauseRef": "7.1",
@@ -275,9 +324,32 @@ Return a JSON object with this exact structure:
       "description": "Payment due within 45 days of invoice date",
       "value": 45,
       "unit": "days",
+      "quantity": 1,
+      "isOptional": false,
+      "scopeTier": null,
       "excerpt": "verbatim quote from document...",
       "page": 7,
       "confidence": 0.90
+    }
+  ],
+  "statedTotals": [
+    {
+      "label": "Total Estimated Tech Transfer Price",
+      "value": 2484200,
+      "scopeTier": "Tech Transfer",
+      "isPrimary": false,
+      "excerpt": "Total Estimated Tech Transfer Price: $2,484,200",
+      "page": 5,
+      "confidence": 0.98
+    },
+    {
+      "label": "Total Estimated Price after Discount",
+      "value": 2820000,
+      "scopeTier": null,
+      "isPrimary": true,
+      "excerpt": "Total Estimated Price after Discount: $2,820,000",
+      "page": 5,
+      "confidence": 0.98
     }
   ],
   "summary": "Brief 1-2 sentence summary of the document"
@@ -603,7 +675,7 @@ function normalizeProvenance(data: Record<string, unknown>, evidenceId: string):
   const result: Record<string, unknown> = { ...data, evidenceId };
 
   // Normalize excerpts in arrays
-  const arrayKeys = ["clauses", "lineItems", "affectedClauses", "terms", "candidates"];
+  const arrayKeys = ["clauses", "lineItems", "affectedClauses", "terms", "candidates", "statedTotals"];
   for (const key of arrayKeys) {
     const arr = result[key];
     if (Array.isArray(arr)) {

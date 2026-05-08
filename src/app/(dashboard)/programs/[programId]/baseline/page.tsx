@@ -8,6 +8,11 @@ import { useSyncProgram } from "@/components/layout/useSyncProgram";
 import { useExtractionPipeline } from "@/hooks/useExtractionPipeline";
 import ExtractionProgress from "@/components/ui/ExtractionProgress";
 import ContactSelector from "@/components/ui/ContactSelector";
+import ReconciliationBanner from "@/components/baseline/ReconciliationBanner";
+import type {
+  ReconciliationResult,
+  StatedTotal,
+} from "@/lib/server/baselineReconciliation";
 
 interface Clause {
   id: string;
@@ -17,6 +22,9 @@ interface Clause {
   description: string | null;
   value: string | null;
   unit: string | null;
+  quantity: string;
+  isOptional: boolean;
+  scopeTier: string | null;
   sortOrder: number;
 }
 
@@ -31,6 +39,8 @@ interface Baseline {
   counterpartyNote: string | null;
   createdAt: string;
   clauses: Clause[];
+  statedTotals: StatedTotal[] | null;
+  reconciliation: ReconciliationResult | null;
   _count?: { clauses: number };
 }
 
@@ -59,7 +69,7 @@ export default function BaselinePage() {
   const [newTitle, setNewTitle] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("All Items");
   const [showAddClause, setShowAddClause] = useState(false);
-  const [clauseForm, setClauseForm] = useState({ clauseRef: "", type: "SCOPE", title: "", description: "", value: "", unit: "" });
+  const [clauseForm, setClauseForm] = useState({ clauseRef: "", type: "SCOPE", title: "", description: "", value: "", unit: "", quantity: "1", isOptional: false, scopeTier: "" });
   const [error, setError] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [clauseReview, setClauseReview] = useState<Record<string, "accepted" | "rejected">>({});
@@ -72,7 +82,7 @@ export default function BaselinePage() {
 
   // Edit modal state
   const [editingClause, setEditingClause] = useState<Clause | null>(null);
-  const [editForm, setEditForm] = useState({ title: "", description: "", value: "", unit: "" });
+  const [editForm, setEditForm] = useState({ title: "", description: "", value: "", unit: "", quantity: "1", isOptional: false, scopeTier: "" });
 
   useSyncProgram();
 
@@ -162,6 +172,7 @@ export default function BaselinePage() {
 
   async function addClause() {
     if (!selected || !clauseForm.title || !clauseForm.type) return;
+    const qty = parseFloat(clauseForm.quantity);
     const res = await fetch(`/api/baselines/${selected.id}/clauses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -171,11 +182,14 @@ export default function BaselinePage() {
         clauseRef: clauseForm.clauseRef || undefined,
         description: clauseForm.description || undefined,
         unit: clauseForm.unit || undefined,
+        quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+        isOptional: clauseForm.isOptional,
+        scopeTier: clauseForm.scopeTier || undefined,
       }),
     });
     if (res.ok) {
       setShowAddClause(false);
-      setClauseForm({ clauseRef: "", type: "SCOPE", title: "", description: "", value: "", unit: "" });
+      setClauseForm({ clauseRef: "", type: "SCOPE", title: "", description: "", value: "", unit: "", quantity: "1", isOptional: false, scopeTier: "" });
       await loadBaseline(selected.id);
     } else {
       const data = await res.json();
@@ -278,11 +292,15 @@ export default function BaselinePage() {
       description: clause.description ?? "",
       value: clause.value ?? "",
       unit: clause.unit ?? "",
+      quantity: clause.quantity != null ? String(clause.quantity) : "1",
+      isOptional: clause.isOptional,
+      scopeTier: clause.scopeTier ?? "",
     });
   }
 
   async function saveEdit() {
     if (!editingClause || !selected) return;
+    const qty = parseFloat(editForm.quantity);
     await fetch(`/api/baselines/${selected.id}/clauses`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -292,6 +310,9 @@ export default function BaselinePage() {
         description: editForm.description || null,
         value: editForm.value ? parseFloat(editForm.value) : null,
         unit: editForm.unit || null,
+        quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+        isOptional: editForm.isOptional,
+        scopeTier: editForm.scopeTier || null,
       }),
     });
     setEditingClause(null);
@@ -418,6 +439,12 @@ export default function BaselinePage() {
               </div>
             )}
 
+            {/* Reconciliation banner — only renders when statedTotals exist
+                and a primary total survived the garbage-primary guard. */}
+            {selected.reconciliation && (
+              <ReconciliationBanner reconciliation={selected.reconciliation} />
+            )}
+
             {/* Tabs */}
             <div className="flex items-center gap-1 border-b border-card-border">
               {TABS.map((tab) => {
@@ -476,9 +503,17 @@ export default function BaselinePage() {
                   <input placeholder="Title *" value={clauseForm.title} onChange={(e) => setClauseForm({ ...clauseForm, title: e.target.value })} className="input" />
                 </div>
                 <input placeholder="Description" value={clauseForm.description} onChange={(e) => setClauseForm({ ...clauseForm, description: e.target.value })} className="input" />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <input placeholder="Value (e.g., 150000)" type="number" value={clauseForm.value} onChange={(e) => setClauseForm({ ...clauseForm, value: e.target.value })} className="input" />
                   <input placeholder="Unit (e.g., USD/batch)" value={clauseForm.unit} onChange={(e) => setClauseForm({ ...clauseForm, unit: e.target.value })} className="input" />
+                  <input placeholder="Quantity" type="number" min="0" step="any" value={clauseForm.quantity} onChange={(e) => setClauseForm({ ...clauseForm, quantity: e.target.value })} className="input" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input placeholder="Scope tier (e.g., Tech Transfer)" value={clauseForm.scopeTier} onChange={(e) => setClauseForm({ ...clauseForm, scopeTier: e.target.value })} className="input" />
+                  <label className="flex items-center gap-2 text-sm text-zinc-700">
+                    <input type="checkbox" checked={clauseForm.isOptional} onChange={(e) => setClauseForm({ ...clauseForm, isOptional: e.target.checked })} className="h-4 w-4" />
+                    Optional / not included in contracted total
+                  </label>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={addClause} className="btn-primary">Add Item</button>
@@ -544,9 +579,17 @@ export default function BaselinePage() {
             <div className="mt-4 space-y-3">
               <div><label className="mb-1 block text-xs font-medium text-muted">Title</label><input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="input" /></div>
               <div><label className="mb-1 block text-xs font-medium text-muted">Description</label><input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="input" /></div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-muted">Value</label><input type="number" value={editForm.value} onChange={(e) => setEditForm({ ...editForm, value: e.target.value })} className="input" /></div>
                 <div><label className="mb-1 block text-xs font-medium text-muted">Unit</label><input value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })} className="input" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-muted">Quantity</label><input type="number" min="0" step="any" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className="input" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="mb-1 block text-xs font-medium text-muted">Scope tier</label><input value={editForm.scopeTier} onChange={(e) => setEditForm({ ...editForm, scopeTier: e.target.value })} placeholder="(none)" className="input" /></div>
+                <label className="flex items-end gap-2 pb-1.5 text-sm text-zinc-700">
+                  <input type="checkbox" checked={editForm.isOptional} onChange={(e) => setEditForm({ ...editForm, isOptional: e.target.checked })} className="h-4 w-4" />
+                  Optional / not included in contracted total
+                </label>
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2">
@@ -634,7 +677,16 @@ function TruthItemCard({ clause, index, programId, isDraft, isReleased, reviewSt
   const category = getCategory(clause.type);
   const isAccepted = reviewStatus === "accepted";
 
-  const borderClass = isAccepted ? "border-green-300 bg-green-50/30" : "";
+  const qty = Number(clause.quantity ?? 1);
+  const valueNum = clause.value != null ? Number(clause.value) : null;
+  const showMultiplier = valueNum != null && qty > 1;
+  const lineTotal = valueNum != null ? valueNum * qty : null;
+
+  const borderClass = clause.isOptional
+    ? "border-zinc-200 bg-zinc-50/60 opacity-75"
+    : isAccepted
+    ? "border-green-300 bg-green-50/30"
+    : "";
 
   return (
     <div className={`card card-hover flex items-start gap-4 ${borderClass}`}>
@@ -653,17 +705,38 @@ function TruthItemCard({ clause, index, programId, isDraft, isReleased, reviewSt
             </span>
           )}
           <StatusBadge status={clause.type} />
+          {clause.isOptional && (
+            <span className="inline-flex rounded-md border border-zinc-300 bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-600">
+              Optional
+            </span>
+          )}
+          {clause.scopeTier && (
+            <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+              {clause.scopeTier}
+            </span>
+          )}
           {isReleased && (
             <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">Waiting for CDMO</span>
           )}
         </div>
         <h4 className="mt-1.5 font-medium text-zinc-900">{clause.title}</h4>
         {clause.description && <p className="mt-0.5 text-sm text-muted">{clause.description}</p>}
-        <div className="mt-2 flex items-center gap-3">
-          {clause.value && (
-            <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-              {Number(clause.value).toLocaleString()} {clause.unit ?? ""}
-            </span>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          {valueNum != null && (
+            showMultiplier ? (
+              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                {qty} × {valueNum.toLocaleString()} {clause.unit ?? ""}
+                {lineTotal != null && (
+                  <span className="ml-1 text-zinc-500">
+                    = {lineTotal.toLocaleString()}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                {valueNum.toLocaleString()} {clause.unit ?? ""}
+              </span>
+            )
           )}
           <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">{category}</span>
           <Link href={`/programs/${programId}/evidence`}

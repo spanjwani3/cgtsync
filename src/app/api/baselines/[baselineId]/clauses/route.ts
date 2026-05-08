@@ -40,14 +40,19 @@ export async function POST(
     }
     const auth = await requireProgramAccess(baseline.programId, OrgRole.OPERATOR);
     const body = await req.json();
-    const { clauseRef, type, title, description, value, unit } = body;
+    const { clauseRef, type, title, description, value, unit, quantity, isOptional, scopeTier } = body;
     if (!type || !title) return NextResponse.json({ error: "type and title required" }, { status: 400 });
+
+    const qtyNum = typeof quantity === "number" && quantity > 0 ? quantity : 1;
 
     const maxOrder = await prisma.baselineClause.aggregate({ where: { baselineId }, _max: { sortOrder: true } });
     const clause = await prisma.baselineClause.create({
       data: {
         baselineId, clauseRef: clauseRef ?? null, type, title,
         description: description ?? null, value: value ?? null, unit: unit ?? null,
+        quantity: qtyNum,
+        isOptional: isOptional === true,
+        scopeTier: typeof scopeTier === "string" ? scopeTier : null,
         sortOrder: (maxOrder._max.sortOrder ?? 0) + 1,
       },
     });
@@ -78,7 +83,7 @@ export async function PATCH(
     }
     const auth = await requireProgramAccess(baseline.programId, OrgRole.OPERATOR);
     const body = await req.json();
-    const { clauseId, title, description, value, unit } = body;
+    const { clauseId, title, description, value, unit, quantity, isOptional, scopeTier } = body;
     if (!clauseId) return NextResponse.json({ error: "clauseId required" }, { status: 400 });
 
     const data: Record<string, unknown> = {};
@@ -86,6 +91,15 @@ export async function PATCH(
     if (description !== undefined) data.description = description || null;
     if (value !== undefined) data.value = value != null ? value : null;
     if (unit !== undefined) data.unit = unit || null;
+    if (quantity !== undefined) {
+      const qty = typeof quantity === "number" ? quantity : Number(quantity);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return NextResponse.json({ error: "quantity must be a positive number" }, { status: 400 });
+      }
+      data.quantity = qty;
+    }
+    if (isOptional !== undefined) data.isOptional = isOptional === true;
+    if (scopeTier !== undefined) data.scopeTier = typeof scopeTier === "string" && scopeTier ? scopeTier : null;
 
     const updated = await prisma.baselineClause.update({ where: { id: clauseId }, data });
     await logEvent({

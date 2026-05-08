@@ -200,16 +200,23 @@ export async function reconcileInvoice(
     return { stats: { matched: 0, flagged: 0, unmapped: 0, total: 0, missingChanges: 0 }, summary: "No line items to reconcile", mappings: [], missingChanges: [] };
   }
 
-  // 3. Build clause and change input lists
-  const clauseInputs: ClauseInput[] = (latestBaseline?.clauses ?? []).map((c) => ({
-    id: c.id,
-    clauseRef: c.clauseRef,
-    title: c.title,
-    description: c.description,
-    value: c.value ? Number(c.value) : null,
-    unit: c.unit,
-    type: c.type,
-  }));
+  // 3. Build clause and change input lists.
+  // Filter out negative-value clauses (e.g., discount lines stored on the
+  // baseline as PRICING with value < 0). Discounts are reconciliation aids
+  // for the baseline total, not billable line items that appear on
+  // invoices — including them as match candidates risks Claude pairing a
+  // real charge with a discount.
+  const clauseInputs: ClauseInput[] = (latestBaseline?.clauses ?? [])
+    .filter((c) => Number(c.value ?? 0) >= 0)
+    .map((c) => ({
+      id: c.id,
+      clauseRef: c.clauseRef,
+      title: c.title,
+      description: c.description,
+      value: c.value ? Number(c.value) : null,
+      unit: c.unit,
+      type: c.type,
+    }));
 
   const changeInputs: ChangeInput[] = confirmedChanges.map((c) => ({
     id: c.id,
@@ -566,15 +573,19 @@ export async function reconcileCandidateChanges(
     },
   });
 
-  const clauseInputs: ClauseInput[] = (latestBaseline?.clauses ?? []).map((c) => ({
-    id: c.id,
-    clauseRef: c.clauseRef,
-    title: c.title,
-    description: c.description,
-    value: c.value ? Number(c.value) : null,
-    unit: c.unit,
-    type: c.type,
-  }));
+  // Same negative-value filter as in reconcileInvoice — discount clauses
+  // shouldn't appear as scope-match candidates.
+  const clauseInputs: ClauseInput[] = (latestBaseline?.clauses ?? [])
+    .filter((c) => Number(c.value ?? 0) >= 0)
+    .map((c) => ({
+      id: c.id,
+      clauseRef: c.clauseRef,
+      title: c.title,
+      description: c.description,
+      value: c.value ? Number(c.value) : null,
+      unit: c.unit,
+      type: c.type,
+    }));
 
   const changeInputs: ChangeInput[] = confirmedChanges.map((c) => ({
     id: c.id,
