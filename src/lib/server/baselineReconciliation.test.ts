@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeContractedTotal,
   reconcileBaseline,
   selectPrimaryStatedTotal,
   type ReconciliationClause,
@@ -65,6 +66,25 @@ describe("selectPrimaryStatedTotal", () => {
       total("Phase 3", 250_000),
     ]);
     expect(r.find((t) => t.isPrimary)?.label).toBe("Phase 2");
+  });
+});
+
+describe("computeContractedTotal", () => {
+  it("multiplies value by quantity and excludes optional + non-monetary units", () => {
+    const total = computeContractedTotal([
+      { value: 169_100, quantity: 2, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD/run" },
+      { value: 7_500, quantity: 11, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD/month" },
+      { value: 50_000, quantity: 1, type: "PRICING", isOptional: true, scopeTier: null, unit: "USD" },
+      { value: 15, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "%" },
+      { value: 30, quantity: 1, type: "PAYMENT_TERMS", isOptional: false, scopeTier: null, unit: "days" },
+      { value: -10_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD" },
+    ]);
+    // 169100 * 2 + 7500 * 11 - 10000 = 338200 + 82500 - 10000 = 410700
+    expect(total).toBe(410_700);
+  });
+
+  it("returns 0 for an empty baseline", () => {
+    expect(computeContractedTotal([])).toBe(0);
   });
 });
 
@@ -271,6 +291,71 @@ describe("reconcileBaseline", () => {
       [total("Total", 300_000, { isPrimary: true })],
     );
     expect(r.primary?.status).toBe("MISMATCH");
+  });
+
+  it("excludes percent-unit PRICING lines (e.g., 15% pass-through markup)", () => {
+    // The Ernexa SOW had a "Pass-through Costs Markup" line extracted as
+    // PRICING with value=15, unit="%". Without a unit filter that line
+    // contributes $15 to the total, drifting the headline off the round
+    // contract value. This test pins the fix.
+    const r = reconcileBaseline(
+      [
+        { value: 1_000_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD" },
+        { value: 15, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "%" },
+      ],
+      [total("Total", 1_000_000, { isPrimary: true })],
+    );
+    expect(r.primary?.computedValue).toBe(1_000_000);
+    expect(r.primary?.status).toBe("MATCH");
+  });
+
+  it("excludes the negative discount line when a stated total is marked excludesDiscounts", () => {
+    // Pre-discount "Total Estimated Price" should reconcile against positive
+    // PRICING only, not the discount-aware sum.
+    const r = reconcileBaseline(
+      [
+        { value: 3_020_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD" },
+        { value: -200_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: null, unit: "USD" },
+      ],
+      [
+        total("Total Estimated Price", 3_020_000, { excludesDiscounts: true }),
+        total("Total Estimated Price after Discount", 2_820_000, { isPrimary: true }),
+      ],
+    );
+    expect(r.primary?.label).toBe("Total Estimated Price after Discount");
+    expect(r.primary?.computedValue).toBe(2_820_000);
+    expect(r.primary?.status).toBe("MATCH");
+
+    const preDiscount = r.secondary.find((s) => s.label === "Total Estimated Price");
+    expect(preDiscount?.computedValue).toBe(3_020_000);
+    expect(preDiscount?.status).toBe("MATCH");
+  });
+
+  it("attributes a Tech-Transfer-scoped discount correctly under excludesDiscounts", () => {
+    // The Ernexa Executive Discount is described as applying to a Tech
+    // Transfer item (DS Engineering Run #1 Suite Fee). The LLM should put
+    // scopeTier="Tech Transfer" on the discount, and the pre-discount Tech
+    // Transfer subtotal should match by ignoring it.
+    const r = reconcileBaseline(
+      [
+        { value: 2_484_200, quantity: 1, type: "PRICING", isOptional: false, scopeTier: "Tech Transfer", unit: "USD" },
+        { value: -200_000, quantity: 1, type: "PRICING", isOptional: false, scopeTier: "Tech Transfer", unit: "USD" },
+        { value: 535_800, quantity: 1, type: "PRICING", isOptional: false, scopeTier: "GMP Run #1", unit: "USD" },
+      ],
+      [
+        total("Total Estimated Tech Transfer Price", 2_484_200, {
+          scopeTier: "Tech Transfer",
+          excludesDiscounts: true,
+        }),
+        total("Total Estimated Tech Transfer Price after Discount", 2_284_200, {
+          scopeTier: "Tech Transfer",
+        }),
+        total("Total Estimated Price after Discount", 2_820_000, { isPrimary: true }),
+      ],
+    );
+    expect(r.primary?.computedValue).toBe(2_820_000);
+    expect(r.primary?.status).toBe("MATCH");
+    expect(r.secondary.every((s) => s.status === "MATCH")).toBe(true);
   });
 
   it("simulates the Ernexa SOW end-to-end", () => {

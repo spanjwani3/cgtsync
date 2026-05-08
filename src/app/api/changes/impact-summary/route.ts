@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireProgramAccess } from "@/lib/server/auth";
+import { computeContractedTotal } from "@/lib/server/baselineReconciliation";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,22 +14,40 @@ export async function GET(req: NextRequest) {
       select: { currency: true },
     });
 
-    // Get the latest locked or confirmed baseline and sum PRICING clause values
+    // Pull every PRICING clause on the latest locked/confirmed baseline so
+    // we can apply the same quantity-aware, optional-aware, monetary-unit
+    // filter the baseline review uses. Without this, the impact summary
+    // disagrees with the reconciliation banner.
     const latestBaseline = await prisma.baseline.findFirst({
       where: { programId, status: { in: ["LOCKED", "CONFIRMED"] } },
       orderBy: { version: "desc" },
       include: {
         clauses: {
           where: { type: "PRICING" },
-          select: { value: true },
+          select: {
+            value: true,
+            quantity: true,
+            isOptional: true,
+            scopeTier: true,
+            type: true,
+            unit: true,
+          },
         },
       },
     });
 
-    const baselineTotal = latestBaseline?.clauses.reduce(
-      (sum, c) => sum + (c.value ? Number(c.value) : 0),
-      0,
-    ) ?? 0;
+    const baselineTotal = latestBaseline
+      ? computeContractedTotal(
+          latestBaseline.clauses.map((c) => ({
+            value: c.value == null ? null : Number(c.value),
+            quantity: Number(c.quantity ?? 1),
+            isOptional: c.isOptional,
+            scopeTier: c.scopeTier,
+            type: c.type,
+            unit: c.unit,
+          })),
+        )
+      : 0;
 
     // Sum change impacts by status group
     const changes = await prisma.change.findMany({

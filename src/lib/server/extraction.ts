@@ -59,6 +59,7 @@ const StatedTotalRow = z.object({
   value: z.number(),
   scopeTier: z.string().nullable().optional(),
   isPrimary: z.boolean().nullable().optional().default(false),
+  excludesDiscounts: z.boolean().nullable().optional().default(false),
   excerpt: z.string().min(1),
   page: z.number().int().positive().nullable().optional(),
   confidence: z.number().min(0).max(1),
@@ -271,6 +272,7 @@ CRITICAL — Discounts as negative PRICING clauses:
 - Executive discounts, volume discounts, credits, rebates, and any negative line items must be extracted as a PRICING clause with "value" as a NEGATIVE number.
 - Example: "Executive Discount: −$200,000" → value: -200000, unit: "USD", quantity: 1, type: "PRICING".
 - This is required so that reconciliation against after-discount stated totals sums correctly. Do NOT skip discount lines.
+- Discount scopeTier attribution: read the SOW carefully to determine which scope tier the discount applies to. If the document says the discount is applied to a specific item (e.g., "Executive Discount applied to GMP Suite Fee for DS Engineering Run #1") and that item belongs to a tier (e.g., "Tech Transfer"), set the discount line's scopeTier to that tier. If the discount applies to the contract overall and the SOW doesn't tie it to a tier, leave scopeTier: null.
 
 Scope tier:
 - If the SOW separates work into named phases or scope tiers (e.g., "Tech Transfer" subtotal vs. "GMP Manufacturing" subtotal vs. an after-discount grand total), set "scopeTier" on each line to the tier name it belongs to. Footnotes commonly indicate this ("Estimated Tech Transfer Price includes: Two (2) DS Engineering Runs..." → scopeTier: "Tech Transfer" on those lines).
@@ -278,10 +280,17 @@ Scope tier:
 
 CRITICAL — Stated totals (top-level reconciliation targets):
 - Find every grand total, subtotal, phase total, after-discount total, and signed contract value stated in the document — in pricing tables, footers, signature blocks, or summary sections.
-- Return them in a top-level "statedTotals" array. Each entry: { label, value, scopeTier?, isPrimary?, excerpt, page, confidence }.
+- Return them in a top-level "statedTotals" array. Each entry: { label, value, scopeTier?, isPrimary?, excludesDiscounts?, excerpt, page, confidence }.
 - Examples of labels: "Total Estimated Tech Transfer Price", "Total Estimated Price", "Total Estimated Price after Discount", "Grand Total".
 - Set "isPrimary": true on EXACTLY ONE entry — the signed contract value. This is typically the after-discount total or the final/grand total. If only one total exists, mark it primary. If multiple totals exist, the after-discount or final-signed total wins.
 - Set scopeTier on a stated total when it covers a named phase (e.g., "Total Estimated Tech Transfer Price" → scopeTier: "Tech Transfer"). The grand total has no scopeTier.
+
+CRITICAL — pre-discount vs. after-discount totals:
+- Many SOWs list a gross total ABOVE the discount line and a net total BELOW it. Both are "stated totals" but they reconcile differently — a discount-aware sum will under-shoot the gross by the discount amount.
+- Set "excludesDiscounts": true on a stated total when it represents the gross/pre-discount/list-price number (typically presented BEFORE the discount line in the pricing table, no "after discount" / "net" wording).
+- Set "excludesDiscounts": false (or omit it) on totals that are net of discounts (the signed contract value, "Total Estimated Price after Discount", "Net Price", "Final Price"). Default is false.
+- Heuristic: read the document order. A subtotal listed above the discount line is almost always pre-discount (excludesDiscounts: true). A subtotal listed below the discount line, or labeled "after discount" / "net" / "final", is post-discount (excludesDiscounts: false).
+- Worked example: a SOW shows "Total Estimated Price: $3,105,600" → "Executive Discount: −$200,000" → "Total Estimated Price after Discount: $2,820,000". The first total has excludesDiscounts: true; the third has excludesDiscounts: false and isPrimary: true.
 
 Return a JSON object with this exact structure:
 {
@@ -338,7 +347,18 @@ Return a JSON object with this exact structure:
       "value": 2484200,
       "scopeTier": "Tech Transfer",
       "isPrimary": false,
+      "excludesDiscounts": true,
       "excerpt": "Total Estimated Tech Transfer Price: $2,484,200",
+      "page": 5,
+      "confidence": 0.98
+    },
+    {
+      "label": "Total Estimated Price",
+      "value": 3105600,
+      "scopeTier": null,
+      "isPrimary": false,
+      "excludesDiscounts": true,
+      "excerpt": "Total Estimated Price: $3,105,600",
       "page": 5,
       "confidence": 0.98
     },
@@ -347,6 +367,7 @@ Return a JSON object with this exact structure:
       "value": 2820000,
       "scopeTier": null,
       "isPrimary": true,
+      "excludesDiscounts": false,
       "excerpt": "Total Estimated Price after Discount: $2,820,000",
       "page": 5,
       "confidence": 0.98
