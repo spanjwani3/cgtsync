@@ -171,23 +171,21 @@ export const TranscriptExtractionSchema = z.object({
 
 export type TranscriptExtraction = z.infer<typeof TranscriptExtractionSchema>;
 
-// ─── Email extraction: single change from email thread ───────
+// ─── Email extraction: multi-candidate scope changes from a thread ───
+//
+// Emails commonly bundle several distinct items in one message
+// ("additional training run planned for august / evaluate two more
+// engineering runs") — the schema must support multiple candidates so each
+// reaches scope analysis independently.
 
 export const EmailExtractionSchema = z.object({
   sender: z.string().nullable().optional(),
   senderRole: z.string().nullable().optional(),
   dateSent: z.string().nullable().optional(),
   subject: z.string().nullable().optional(),
-  changeTitle: z.string().min(1),
-  description: z.string().nullable().optional(),
-  severity: z.enum(SEVERITIES).catch("MEDIUM"),
-  estimatedImpact: z.number().nullable().optional(),
-  scheduleImpactDays: z.number().int().nullable().optional(),
   proposedBy: z.string().nullable().optional(),
+  candidates: z.array(CandidateChangeRow).min(1),
   summary: z.string().nullable().optional(),
-  excerpt: z.string().min(1),
-  page: z.number().int().positive().nullable().optional(),
-  confidence: z.number().min(0).max(1),
 });
 
 export type EmailExtraction = z.infer<typeof EmailExtractionSchema>;
@@ -518,13 +516,19 @@ Return a JSON object with this exact structure:
 
 Be thorough — extract ALL potential scope changes, even uncertain ones. Use lower confidence (0.3-0.5) for items that are uncertain or just mentioned in passing. Return ONLY valid JSON, no markdown fences.`;
 
-const CHANGE_EMAIL_PROMPT = `You are an expert at analyzing email threads for biopharma outsourcing programs. Extract the scope change or cost impact being proposed or discussed in this email.
+const CHANGE_EMAIL_PROMPT = `You are an expert at analyzing email threads for biopharma outsourcing programs. Extract EVERY distinct scope, schedule, or cost item being proposed, raised, asked about, or agreed to in this email — emails frequently bundle multiple items in one message and each must be evaluated independently against the baseline.
 
 Look for:
 - Proposed cost changes: "additional charge", "revised quote", "cost increase"
 - Schedule changes: "delay", "timeline change", "new date"
-- Scope modifications: "additional work", "change request", "amendment"
+- Scope modifications: "additional work", "change request", "amendment", "additional run", "extra batch"
+- Evaluations / open questions about future work: "evaluate need for X", "considering Y", "may need Z"
 - Agreements or approvals: "approved", "confirmed", "agreed"
+
+CRITICAL — multi-candidate extraction:
+- Treat each distinct item as a SEPARATE candidate. "Additional training run planned for August" and "Evaluate need for two engineering runs after the first one" are TWO candidates, not one — even when they appear in the same email body.
+- Bullet points, separate paragraphs, separate sentences with different subjects/objects, and follow-up replies in a thread are signals of distinct candidates.
+- Emails that contain only pleasantries / signatures / no scope-relevant content should still return a candidates array (with a single low-confidence "no actionable change" item is acceptable, but only if truly nothing actionable is present). Prefer extracting too many low-confidence candidates over missing one.
 ${PROVENANCE_INSTRUCTION}
 
 Return a JSON object with this exact structure:
@@ -533,19 +537,24 @@ Return a JSON object with this exact structure:
   "senderRole": "Role/company of sender or null",
   "dateSent": "YYYY-MM-DD or null",
   "subject": "Email subject line or null",
-  "changeTitle": "Brief title of the proposed change",
-  "description": "Full description of what is being proposed/changed",
-  "severity": "LOW, MEDIUM, HIGH, or CRITICAL",
-  "estimatedImpact": 5000.00,
-  "scheduleImpactDays": 3,
-  "proposedBy": "Who is proposing this change",
-  "summary": "Brief 1-2 sentence summary",
-  "excerpt": "verbatim quote from email...",
-  "page": 1,
-  "confidence": 0.85
+  "proposedBy": "Who is proposing/raising these items (often the same as sender)",
+  "candidates": [
+    {
+      "changeTitle": "Brief title of one specific item",
+      "description": "Full description of what is being proposed/changed/asked",
+      "severity": "LOW, MEDIUM, HIGH, or CRITICAL",
+      "estimatedImpact": 5000.00,
+      "scheduleImpactDays": 3,
+      "speaker": "Name of person raising this item, often = sender",
+      "excerpt": "verbatim quote from the email body that supports this item (10-40 words)",
+      "page": 1,
+      "confidence": 0.85
+    }
+  ],
+  "summary": "Brief 1-2 sentence summary of what the email contains"
 }
 
-Return ONLY valid JSON, no markdown fences.`;
+The candidates array must contain at least one entry. Return ONLY valid JSON, no markdown fences.`;
 
 function getPromptForTarget(targetType: ExtractionTargetType): string {
   switch (targetType) {
@@ -812,10 +821,11 @@ function estimateConfidence(data: Record<string, unknown>, targetType: Extractio
       break;
     }
     case "CHANGE_EMAIL": {
-      if (data.changeTitle) score += 0.15;
+      const candidates = data.candidates as unknown[];
+      if (Array.isArray(candidates) && candidates.length > 0) score += 0.2;
       if (data.sender) score += 0.1;
-      if (data.description) score += 0.15;
-      if (data.estimatedImpact !== null && data.estimatedImpact !== undefined) score += 0.1;
+      if (data.subject) score += 0.05;
+      if (data.summary) score += 0.05;
       break;
     }
     case "TERMS": {
