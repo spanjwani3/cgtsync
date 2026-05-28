@@ -5,13 +5,14 @@ import Link from "next/link";
 const ITEMS = [
   { key: "activity", label: "Activity", href: "/admin/activity" },
   { key: "tenants", label: "Tenants", href: "/admin/tenants" },
+  { key: "demos", label: "Demo", href: "/admin/demos" },
   { key: "health", label: "Health", href: "/admin/health" },
 ] as const;
 
 export default function AdminNav({
   active,
 }: {
-  active: "activity" | "tenants" | "health";
+  active: "activity" | "tenants" | "demos" | "health";
 }) {
   return (
     <nav className="flex items-center gap-1 border-b border-zinc-200 pb-2 text-sm">
