@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { EVIDENCE_BUCKET } from "@/lib/config";
+import { EVIDENCE_BUCKET, DEMO_BUCKET } from "@/lib/config";
 
 const SIGNED_URL_TTL = 300; // 5 minutes
 
@@ -148,6 +148,27 @@ export async function getSignedUrl(
 
   if (error || !data?.signedUrl) {
     throw new Error(`Failed to generate signed URL: ${error?.message}`);
+  }
+
+  return data.signedUrl;
+}
+
+/**
+ * Generate a signed URL for a demo video in the private DEMO_BUCKET.
+ * Default TTL is long enough to play a full demo (4h).
+ */
+export async function getDemoVideoSignedUrl(
+  path: string,
+  ttl: number = 4 * 60 * 60,
+): Promise<string> {
+  const admin = getAdminClient();
+
+  const { data, error } = await admin.storage
+    .from(DEMO_BUCKET)
+    .createSignedUrl(path, ttl);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(`Failed to generate demo signed URL: ${error?.message}`);
   }
 
   return data.signedUrl;

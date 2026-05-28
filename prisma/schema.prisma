@@ -864,3 +864,44 @@ model InboundEmail {
   @@index([ingestAddressId, createdAt])
   @@map("inbound_emails")
 }
+
+// ─── Gated demo videos ──────────────────────────────────────
+// Platform-level marketing data (no org/tenant scope). Captured when a
+// prospect submits a business email to watch a gated demo video.
+
+model DemoLead {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  name      String?
+  company   String?
+  demoSlug  String   @map("demo_slug")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  views DemoView[]
+
+  @@unique([demoSlug, email])
+  @@index([demoSlug, createdAt])
+  @@index([email])
+  @@map("demo_leads")
+}
+
+model DemoView {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  leadId          String   @map("lead_id") @db.Uuid
+  demoSlug        String   @map("demo_slug")
+  email           String // denormalized for easy admin queries
+  watchedSeconds  Int      @default(0) @map("watched_seconds") // real play time (seek-safe)
+  maxPositionSec  Int      @default(0) @map("max_position_sec") // furthest point reached
+  durationSec     Int?     @map("duration_sec")
+  completed       Boolean  @default(false)
+  startedAt       DateTime @default(now()) @map("started_at")
+  lastHeartbeatAt DateTime @default(now()) @map("last_heartbeat_at")
+
+  lead DemoLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([demoSlug, startedAt])
+  @@index([leadId])
+  @@map("demo_views")
+}

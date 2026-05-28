@@ -18,6 +18,13 @@ export {
 export const EVIDENCE_BUCKET =
   process.env.SUPABASE_EVIDENCE_BUCKET ?? "evidence";
 
+/**
+ * Private Supabase Storage bucket holding gated demo videos. Separate from the
+ * evidence bucket so it can have a larger file-size limit. Override via
+ * SUPABASE_DEMO_BUCKET env var.
+ */
+export const DEMO_BUCKET = process.env.SUPABASE_DEMO_BUCKET ?? "demo";
+
 // ─── Environment ────────────────────────────────────────────
 
 /** All environment variables the app requires. */
