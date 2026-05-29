@@ -31,6 +31,13 @@ export const DEMOS: Record<string, Demo> = {
     storagePath: "cgt-sync-cdmo-demo.mp4",
     contentType: "video/mp4",
   },
+  "sponsor-b8d4f1a9e3": {
+    title: "CGT Sync for Sponsors",
+    subtitle:
+      "Real-time financial & scope governance across your CDMO programs — a 2-minute walkthrough.",
+    storagePath: "cgt-sync-sponsor-demo.mp4",
+    contentType: "video/mp4",
+  },
 };
 
 /** Return the demo for a slug, or null if it doesn't exist. */
