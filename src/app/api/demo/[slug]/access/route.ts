@@ -124,7 +124,11 @@ export async function POST(
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: `/demo/${slug}`,
+      // Scope to "/" so the cookie reaches BOTH the page (/demo/<slug>) and the
+      // heartbeat API (/api/demo/<slug>/heartbeat). A narrower /demo/<slug> path
+      // would never be sent to /api/... requests, silently breaking watch-time
+      // tracking. The token is bound to this slug, so a site-wide path is safe.
+      path: "/",
       maxAge: ACCESS_TTL_SECONDS,
     });
 
